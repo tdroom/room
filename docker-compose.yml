@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: roomplanning
+      POSTGRES_USER: roomplanning
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?imposta DB_PASSWORD nel file .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backup:/backup
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roomplanning -d roomplanning"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      BASE_URL: https://${DOMAIN:-room.toscanadiagnostica.it}
+      DATABASE_URL: postgres://roomplanning:${DB_PASSWORD}@db:5432/roomplanning
+      SESSION_SECRET: ${SESSION_SECRET:?imposta SESSION_SECRET nel file .env}
+      SESSION_HOURS: ${SESSION_HOURS:-10}
+      REQUIRE_TOTP_FOR_ADMINS: ${REQUIRE_TOTP_FOR_ADMINS:-true}
+      SEED_SUPERADMIN_EMAIL: ${SEED_SUPERADMIN_EMAIL:-}
+      SEED_SUPERADMIN_NAME: ${SEED_SUPERADMIN_NAME:-Amministratore}
+      SEED_SUPERADMIN_PASSWORD: ${SEED_SUPERADMIN_PASSWORD:-}
+      SEED_INITIAL_DATA: ${SEED_INITIAL_DATA:-true}
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
+      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
+      ENTRA_AUTO_ROLE: ${ENTRA_AUTO_ROLE:-VIEWER}
+      ENTRA_ALLOWED_DOMAINS: ${ENTRA_ALLOWED_DOMAINS:-toscanadiagnostica.it}
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:-room.toscanadiagnostica.it}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [app]
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./backup:/backup
+    entrypoint: ["/bin/sh", "-c", "while true; do pg_dump -h db -U roomplanning -Fc roomplanning > /backup/roomplanning_$(date +%F).dump && find /backup -name '*.dump' -mtime +30 -delete; sleep 86400; done"]
+    depends_on: [db]
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

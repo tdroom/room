@@ -1,0 +1,50 @@
+# Deploy su Render: New > Blueprint > collega il repository GitHub tdroom/td-room-planning.
+# Piani a pagamento: app sempre accesa e database persistente con backup. Per una prova: plan free su entrambi.
+services:
+  - type: web
+    name: td-room
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: BASE_URL
+        value: https://td-room.onrender.com   # quando il dominio ufficiale (es. room.toscanadiagnostica.it) sarà attivo, aggiornare qui
+      - key: DATABASE_URL
+        fromDatabase:
+          name: td-room-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SESSION_HOURS
+        value: "10"
+      - key: REQUIRE_TOTP_FOR_ADMINS
+        value: "true"
+      - key: SEED_SUPERADMIN_EMAIL
+        value: francesco.epifani@toscanadiagnostica.it
+      - key: SEED_SUPERADMIN_NAME
+        value: Francesco Epifani
+      - key: SEED_SUPERADMIN_PASSWORD
+        sync: false   # inserire a mano nel pannello (min 12 caratteri): password di emergenza, da cambiare al primo accesso
+      - key: SEED_INITIAL_DATA
+        value: "true"  # al primo avvio carica le 7 sedi migrate dalla versione precedente (solo se il database è vuoto)
+      - key: ENTRA_TENANT_ID
+        sync: false   # gestite nel pannello Render
+      - key: ENTRA_CLIENT_ID
+        sync: false
+      - key: ENTRA_CLIENT_SECRET
+        sync: false
+      - key: ENTRA_AUTO_ROLE
+        value: VIEWER   # chi entra con Microsoft 365 la prima volta viene registrato come Consultazione (PLANNER = pianificatore; vuoto = solo censiti)
+      - key: ENTRA_ALLOWED_DOMAINS
+        value: toscanadiagnostica.it
+databases:
+  - name: td-room-db
+    plan: basic-256mb
+    region: frankfurt
+    databaseName: roomplanning
+    user: roomplanning

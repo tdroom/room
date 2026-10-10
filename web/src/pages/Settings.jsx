@@ -1,0 +1,76 @@
+import React, { useState } from 'react';
+import { api } from '../api.js';
+import { useApi, Card, Loading, Empty, ErrorBox, useToast, Badge } from '../components/ui.jsx';
+import { itDateTime } from '../format.js';
+import { sedeLabel } from './Sedi.jsx';
+
+export default function Settings() {
+  const toast = useToast();
+  const trash = useApi('/strutture?deleted=1');
+  const settings = useApi('/settings');
+  const [err, setErr] = useState(null);
+  const [mode, setMode] = useState('merge');
+  const [res, setRes] = useState(null);
+
+  const importFile = (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const fr = new FileReader();
+    fr.onload = async () => {
+      setErr(null); setRes(null);
+      try {
+        const envelope = JSON.parse(fr.result);
+        const n = (envelope.data?.strutture || envelope.strutture || []).length;
+        if (!n) throw new Error('Il file non contiene sedi');
+        if (!window.confirm(mode === 'replace' ? `Il file contiene ${n} sedi. Le sedi presenti nel file sostituiscono quelle attuali; quelle assenti dal file finiscono nel cestino. Procedere?` : `Il file contiene ${n} sedi: quelle già presenti vengono aggiornate, le altre create. Procedere?`)) return;
+        const r = await api.post('/backup/import', { envelope, mode });
+        setRes(r); toast(`Importazione completata: ${r.created} create, ${r.updated} aggiornate`); trash.reload();
+      } catch (e2) { setErr(e2); }
+    };
+    fr.readAsText(f); e.target.value = '';
+  };
+  const restore = async (s) => { try { await api.post(`/strutture/${s.id}/restore`); toast('Sede ripristinata'); trash.reload(); } catch (e) { setErr(e); } };
+  const purge = async (s) => {
+    if (window.prompt(`Eliminazione DEFINITIVA di "${sedeLabel(s)}": tutti i dati, la cronologia e la planimetria vengono cancellati. Scrivi DEFINITIVO per confermare.`) !== 'DEFINITIVO') return;
+    try { await api.del(`/strutture/${s.id}?confirm=DEFINITIVO`); toast('Sede eliminata definitivamente'); trash.reload(); } catch (e) { setErr(e); }
+  };
+
+  return (
+    <div className="page">
+      <div className="page-head"><div><h1>Backup e cestino</h1><div className="sub">Copia di sicurezza di tutti i dati, importazione da backup, ripristino delle sedi eliminate</div></div></div>
+      <ErrorBox error={err} />
+      <div className="grid g2">
+        <Card title="Backup completo">
+          <p>Scarica un file JSON con tutte le sedi (anagrafica, ambulatori, personale, loghi e planimetrie). È lo stesso formato della versione precedente e del file in OneDrive: si può reimportare qui in qualsiasi momento.</p>
+          <div className="row"><a className="btn" href="/api/backup" download>Scarica backup (sedi attive)</a><a className="btn ghost" href="/api/backup?trash=1" download>Includi anche il cestino</a></div>
+          <p className="small muted" style={{ marginTop: 10 }}>Il database su Render ha inoltre i backup automatici del piano; questo file serve come copia indipendente da conservare in OneDrive.</p>
+        </Card>
+        <Card title="Importa da backup">
+          <p>Accetta i file di backup di questa versione e quelli della versione precedente (Backup_Pianificazione_*.json, Pianificazione_Ambulatori_dati.json).</p>
+          <div className="row" style={{ marginBottom: 10 }}>
+            <label className="f inline"><input type="radio" checked={mode === 'merge'} onChange={() => setMode('merge')} />Aggiorna e aggiungi (consigliato)</label>
+            <label className="f inline"><input type="radio" checked={mode === 'replace'} onChange={() => setMode('replace')} />Sostituisci tutto</label>
+          </div>
+          <label className="btn ghost" style={{ cursor: 'pointer' }}>Scegli il file JSON…<input type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={importFile} /></label>
+          {res && <div className="alert info" style={{ marginTop: 10 }}>Create {res.created}, aggiornate {res.updated}. Ogni sede importata ha una nuova versione in cronologia: lo stato precedente resta ripristinabile.</div>}
+        </Card>
+      </div>
+      <Card title="Cestino" className="mt" flush>
+        {!trash.data ? <Loading /> : !trash.data.length ? <Empty>Nessuna sede nel cestino</Empty> : (
+          <div className="table-wrap"><table className="t">
+            <thead><tr><th>Sede</th><th>Indirizzo</th><th>Eliminata</th><th /></tr></thead>
+            <tbody>{trash.data.map((s) => (
+              <tr key={s.id}><td className="strong">{sedeLabel(s)}</td><td>{s.indirizzo}</td><td className="small">{itDateTime(s._deletedAt)}</td>
+                <td className="num" style={{ whiteSpace: 'nowrap' }}><button className="btn sm" onClick={() => restore(s)}>Ripristina</button> <button className="btn sm ghost" style={{ color: 'var(--red)' }} onClick={() => purge(s)}>Elimina definitivamente</button></td></tr>
+            ))}</tbody>
+          </table></div>
+        )}
+      </Card>
+      <Card title="Accesso Microsoft 365" className="mt">
+        {!settings.data ? <Loading /> : <>
+          <p>Stato: {settings.data.entraEnabled ? <Badge tone="green">attivo</Badge> : <Badge tone="red">non configurato</Badge>}. Auto-registrazione al primo accesso: {settings.data.autoProvisionRole ? <>attiva con ruolo <b>{settings.data.autoProvisionRole === 'VIEWER' ? 'Consultazione' : 'Pianificatore'}</b> per i domini {settings.data.allowedDomains.join(', ') || 'del tenant'}</> : 'disattivata (solo utenti censiti)'}.</p>
+          <p className="small muted">Si imposta con le variabili ENTRA_* e ENTRA_AUTO_ROLE / ENTRA_ALLOWED_DOMAINS nel pannello Render (vedi README).</p>
+        </>}
+      </Card>
+    </div>
+  );
+}

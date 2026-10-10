@@ -1,0 +1,151 @@
+import { Router } from 'express';
+import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
+import { z } from 'zod';
+import { one, many, q, tx } from '../db.js';
+import { ah, bad, notFound, audit, parse } from '../lib/util.js';
+import { requireRole } from '../lib/access.js';
+import { BLOB_KINDS, splitStruttura, joinStruttura, sortStrutture } from '../lib/strutture.js';
+import { config } from '../config.js';
+
+const r = Router();
+const tempPassword = () => crypto.randomBytes(9).toString('base64url').replace(/[-_]/g, 'x') + 'A1!';
+
+// ---------------- Utenti ----------------
+const userSchema = z.object({
+  email: z.string().email().transform((s) => s.toLowerCase()),
+  full_name: z.string().min(2).max(120),
+  role: z.enum(['ADMIN', 'PLANNER', 'VIEWER']),
+  auth_provider: z.enum(['LOCAL', 'ENTRA', 'BOTH']),
+  struttura_ids: z.array(z.string()).default([]),
+  active: z.boolean().default(true),
+});
+
+r.get('/users', requireRole('ADMIN'), ah(async (_req, res) => {
+  res.json(await many(`SELECT u.id, u.email, u.full_name, u.role, u.auth_provider, u.totp_enabled, u.active, u.must_change_password, u.last_login_at, u.locked_until,
+      coalesce((SELECT array_agg(struttura_id) FROM user_strutture WHERE user_id=u.id), '{}') AS struttura_ids
+    FROM users u ORDER BY u.active DESC, u.full_name`));
+}));
+
+r.post('/users', requireRole('ADMIN'), ah(async (req, res) => {
+  const d = parse(userSchema, req.body);
+  if (await one('SELECT 1 FROM users WHERE lower(email)=$1', [d.email])) throw bad('Email già registrata');
+  const needsPwd = d.auth_provider !== 'ENTRA';
+  const pwd = needsPwd ? tempPassword() : null;
+  const row = await tx(async (c) => {
+    const u = (await c.query(`INSERT INTO users (email, full_name, role, auth_provider, password_hash, must_change_password, active) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [d.email, d.full_name, d.role, d.auth_provider, pwd ? await bcrypt.hash(pwd, 12) : null, needsPwd, d.active])).rows[0];
+    for (const s of d.struttura_ids) await c.query('INSERT INTO user_strutture VALUES ($1,$2)', [u.id, s]);
+    return u;
+  });
+  await audit(req, 'USER_CREATE', 'user', row.id, { email: d.email, role: d.role });
+  res.status(201).json({ id: row.id, temporaryPassword: pwd });
+}));
+
+r.put('/users/:id', requireRole('ADMIN'), ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const existing = await one('SELECT * FROM users WHERE id=$1', [id]);
+  if (!existing) throw notFound();
+  const d = parse(userSchema, req.body);
+  if (id === req.user.id && (!d.active || d.role !== 'ADMIN')) throw bad('Non puoi disattivare o declassare il tuo utente');
+  if (await one('SELECT 1 FROM users WHERE lower(email)=$1 AND id<>$2', [d.email, id])) throw bad('Email già registrata');
+  let pwd = null;
+  await tx(async (c) => {
+    if (d.auth_provider !== 'ENTRA' && !existing.password_hash) {
+      pwd = tempPassword();
+      await c.query('UPDATE users SET password_hash=$2, must_change_password=TRUE WHERE id=$1', [id, await bcrypt.hash(pwd, 12)]);
+    }
+    await c.query('UPDATE users SET email=$2, full_name=$3, role=$4, auth_provider=$5, active=$6, updated_at=now() WHERE id=$1', [id, d.email, d.full_name, d.role, d.auth_provider, d.active]);
+    await c.query('DELETE FROM user_strutture WHERE user_id=$1', [id]);
+    for (const s of d.struttura_ids) await c.query('INSERT INTO user_strutture VALUES ($1,$2)', [id, s]);
+    if (!d.active) await c.query(`DELETE FROM "session" WHERE (sess->>'userId')::int = $1`, [id]);
+  });
+  await audit(req, 'USER_UPDATE', 'user', id, { email: d.email, role: d.role, active: d.active });
+  res.json({ ok: true, temporaryPassword: pwd });
+}));
+
+r.post('/users/:id/reset-password', requireRole('ADMIN'), ah(async (req, res) => {
+  const u = await one('SELECT * FROM users WHERE id=$1', [Number(req.params.id)]);
+  if (!u) throw notFound();
+  if (u.auth_provider === 'ENTRA') throw bad("L'utente accede solo con Microsoft: la password si gestisce in Office 365");
+  const pwd = tempPassword();
+  await q('UPDATE users SET password_hash=$2, must_change_password=TRUE, failed_logins=0, locked_until=NULL WHERE id=$1', [u.id, await bcrypt.hash(pwd, 12)]);
+  await q(`DELETE FROM "session" WHERE (sess->>'userId')::int = $1`, [u.id]);
+  await audit(req, 'USER_RESET_PASSWORD', 'user', u.id);
+  res.json({ temporaryPassword: pwd });
+}));
+
+r.post('/users/:id/reset-totp', requireRole('ADMIN'), ah(async (req, res) => {
+  const u = await one('SELECT id FROM users WHERE id=$1', [Number(req.params.id)]);
+  if (!u) throw notFound();
+  await q('UPDATE users SET totp_secret=NULL, totp_enabled=FALSE WHERE id=$1', [u.id]);
+  await audit(req, 'USER_RESET_TOTP', 'user', u.id);
+  res.json({ ok: true });
+}));
+
+// ---------------- Impostazioni ----------------
+r.get('/settings', ah(async (_req, res) => {
+  const rows = await many('SELECT key, value FROM app_settings');
+  const s = Object.fromEntries(rows.map((x) => [x.key, x.value]));
+  let brand = null; try { brand = s.brand ? JSON.parse(s.brand) : null; } catch { brand = null; }
+  res.json({ brand, entraEnabled: config.entra.enabled, autoProvisionRole: config.entra.autoProvisionRole, allowedDomains: config.entra.allowedDomains });
+}));
+
+// ---------------- Backup completo e importazione ----------------
+r.get('/backup', requireRole('ADMIN'), ah(async (req, res) => {
+  const rows = await many('SELECT id, data, version, updated_at, deleted_at FROM strutture ORDER BY id');
+  const blobs = await many('SELECT struttura_id, kind, data FROM struttura_blobs');
+  const byId = {};
+  for (const b of blobs) (byId[b.struttura_id] ||= {})[b.kind] = b.data;
+  const brandRow = await one(`SELECT value FROM app_settings WHERE key='brand'`);
+  const strutture = sortStrutture(rows.filter((x) => !x.deleted_at || req.query.trash === '1').map((x) => ({ ...joinStruttura(x.data, byId[x.id] || {}), _version: x.version, _updatedAt: x.updated_at, _deletedAt: x.deleted_at })));
+  const env = { app: config.appName, version: 4, savedAt: new Date().toISOString(), savedBy: req.user.full_name, data: { brand: brandRow ? JSON.parse(brandRow.value) : null, strutture } };
+  await audit(req, 'BACKUP_EXPORT', 'strutture', null, { n: strutture.length });
+  res.setHeader('Content-Disposition', `attachment; filename="Backup_RoomPlanning_${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json"`);
+  res.json(env);
+}));
+
+// Importa un backup (stesso formato del file OneDrive / artifact). mode=merge (default): aggiorna o crea le sedi del file; mode=replace: sostituisce tutto.
+r.post('/backup/import', requireRole('ADMIN'), ah(async (req, res) => {
+  const { envelope, mode } = parse(z.object({ envelope: z.any(), mode: z.enum(['merge', 'replace']).default('merge') }), req.body);
+  const d = envelope?.data?.strutture ? envelope.data : envelope;
+  if (!d || !Array.isArray(d.strutture)) throw bad('Formato non riconosciuto');
+  let created = 0, updated = 0;
+  await tx(async (c) => {
+    if (mode === 'replace') {
+      // le sedi non presenti nel file finiscono nel cestino, non vengono cancellate
+      const ids = d.strutture.map((s) => s.id);
+      await c.query('UPDATE strutture SET deleted_at=now(), deleted_by=$2 WHERE deleted_at IS NULL AND NOT (id = ANY($1))', [ids, req.user.id]);
+    }
+    for (const s of d.strutture) {
+      const { lite, blobs } = splitStruttura(s);
+      if (!lite.id) continue;
+      const ex = await c.query('SELECT version FROM strutture WHERE id=$1', [lite.id]);
+      let version = 1;
+      if (ex.rows.length) {
+        version = ex.rows[0].version + 1; updated++;
+        await c.query('UPDATE strutture SET data=$2, version=$3, updated_at=now(), updated_by=$4, deleted_at=NULL, deleted_by=NULL WHERE id=$1', [lite.id, JSON.stringify(lite), version, req.user.id]);
+      } else {
+        created++;
+        await c.query('INSERT INTO strutture (id, data, version, updated_by) VALUES ($1,$2,1,$3)', [lite.id, JSON.stringify(lite), req.user.id]);
+      }
+      for (const k of BLOB_KINDS) {
+        if (blobs[k]) await c.query('INSERT INTO struttura_blobs (struttura_id, kind, data, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (struttura_id, kind) DO UPDATE SET data=EXCLUDED.data, updated_at=now()', [lite.id, k, blobs[k]]);
+      }
+      await c.query('INSERT INTO struttura_history (struttura_id, version, data, user_id, user_name, note) VALUES ($1,$2,$3,$4,$5,$6)', [lite.id, version, JSON.stringify(lite), req.user.id, req.user.full_name, `importazione backup (${envelope.savedAt || 'data sconosciuta'})`]);
+    }
+    if (d.brand) await c.query(`INSERT INTO app_settings (key, value) VALUES ('brand', $1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, [JSON.stringify({ c: d.brand.c })]);
+  });
+  await audit(req, 'BACKUP_IMPORT', 'strutture', null, { mode, created, updated });
+  res.json({ ok: true, created, updated });
+}));
+
+// ---------------- Audit ----------------
+r.get('/audit', requireRole('ADMIN'), ah(async (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 200, 1000);
+  const params = []; let where = 'TRUE';
+  if (req.query.action) { params.push(req.query.action); where = `a.action = $1`; }
+  res.json(await many(`SELECT a.*, u.full_name, u.email FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE ${where} ORDER BY a.at DESC LIMIT ${limit}`, params));
+}));
+
+export default r;
