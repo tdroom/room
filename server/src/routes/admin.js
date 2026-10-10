@@ -17,7 +17,7 @@ const tempPassword = () => crypto.randomBytes(9).toString('base64url').replace(/
 const userSchema = z.object({
   email: z.string().email().transform((s) => s.toLowerCase()),
   full_name: z.string().min(2).max(120),
-  role: z.enum(['ADMIN', 'PLANNER', 'VIEWER']),
+  role: z.enum(['ADMIN', 'PLANNER', 'VIEWER', 'RESP_SAN', 'PROF']),
   auth_provider: z.enum(['LOCAL', 'ENTRA', 'BOTH']),
   struttura_ids: z.array(z.string()).default([]),
   active: z.boolean().default(true),
@@ -91,11 +91,11 @@ r.get('/settings', ah(async (_req, res) => {
   const s = Object.fromEntries(rows.map((x) => [x.key, x.value]));
   let brand = null; try { brand = s.brand ? JSON.parse(s.brand) : null; } catch { brand = null; }
   res.json({ brand, entraEnabled: config.entra.enabled, autoProvisionRole: config.entra.autoProvisionRole, allowedDomains: config.entra.allowedDomains, mail: mailStatus(),
-    crit_soglia: s.crit_soglia || '5', crit_alert_enabled: s.crit_alert_enabled || 'false', crit_alert_hour: s.crit_alert_hour || '8', crit_alert_last_run: s.crit_alert_last_run || '' });
+    crit_soglia: s.crit_soglia || '5', crit_alert_enabled: s.crit_alert_enabled || 'false', crit_alert_hour: s.crit_alert_hour || '8', crit_alert_last_run: s.crit_alert_last_run || '', rendiconto_cc: s.rendiconto_cc || '', resp_san_nome: s.resp_san_nome || '' });
 }));
 
 r.put('/settings', requireRole('ADMIN'), ah(async (req, res) => {
-  const d = parse(z.object({ crit_soglia: z.string().regex(/^\d{1,3}$/).optional(), crit_alert_enabled: z.enum(['true', 'false']).optional(), crit_alert_hour: z.string().regex(/^([01]?\d|2[0-3])$/).optional() }), req.body);
+  const d = parse(z.object({ crit_soglia: z.string().regex(/^\d{1,3}$/).optional(), crit_alert_enabled: z.enum(['true', 'false']).optional(), crit_alert_hour: z.string().regex(/^([01]?\d|2[0-3])$/).optional(), rendiconto_cc: z.string().max(500).optional(), resp_san_nome: z.string().max(120).optional() }), req.body);
   for (const [k, v] of Object.entries(d)) await q('INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [k, v]);
   await audit(req, 'SETTINGS_UPDATE', 'settings', null, d);
   res.json({ ok: true });

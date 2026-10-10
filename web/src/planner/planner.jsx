@@ -885,6 +885,16 @@ function Anagrafica({
       siteManager: e.target.value
     })
   })), React.createElement(Field, {
+    l: "Email del site manager (conferma presenze)"
+  }, React.createElement("input", {
+    type: "email",
+    value: str.siteManagerEmail || '',
+    placeholder: "nome@toscanadiagnostica.it",
+    title: "L'utente con questa email può confermare ogni giorno le presenze del personale sanitario di questa sede",
+    onChange: e => set({
+      siteManagerEmail: e.target.value
+    })
+  })), React.createElement(Field, {
     l: "Logo della struttura"
   }, React.createElement("div", {
     className: "rowline"

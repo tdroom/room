@@ -318,3 +318,23 @@ th.sortable:hover { color: var(--teal); }
 .seg button { font: inherit; background: none; border: 0; border-right: 1px solid #c9d7da; padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
 .seg button:last-child { border-right: 0; }
 .seg button.on { background: var(--teal); color: #fff; }
+
+/* v2.0 personale sanitario */
+.b-amber { background: #fff3d6; color: #8a5a00; }
+.amber { color: #8a5a00; }
+.turni-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.turni-day { background: #fff; border: 1px solid var(--line); border-radius: 10px; min-height: 92px; padding: 6px; }
+.turni-day.off { background: #f6f8f8; }
+.turni-day.today { outline: 2px solid var(--teal); }
+.turni-day .dn { font-size: 11.5px; font-weight: 700; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 4px; }
+.turno { font-size: 11px; line-height: 1.25; padding: 3px 6px; border-radius: 6px; margin-bottom: 3px; background: var(--teal-050); color: var(--teal); cursor: pointer; border-left: 3px solid var(--teal); }
+.turno.scoperto { background: var(--red-100); color: var(--red); border-left-color: var(--red); }
+.turno.medico { background: var(--mauve-100); color: #6d3f8a; border-left-color: #7A4E9E; }
+.turno .who { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pres-row td { vertical-align: middle; }
+.pres-row.assente { opacity: .6; }
+.stat-bar { height: 8px; background: #eef1f2; border-radius: 4px; overflow: hidden; }
+.stat-bar > div { height: 100%; background: var(--teal); }
+.portale-hero { background: linear-gradient(135deg, #01212C, #1C505E); color: #FFFAE3; border-radius: 14px; padding: 20px 22px; }
+.portale-hero h1 { color: #fff; margin: 0 0 4px; }
+@media (max-width: 900px) { .turni-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -43,6 +43,17 @@ export function requireAuth(req, _res, next) {
 export const requireRole = (...roles) => (req, _res, next) => (roles.includes(req.user?.role) ? next() : next(forbidden()));
 export const isAdmin = (u) => u?.role === 'ADMIN';
 export const canEdit = (u) => u?.role === 'ADMIN' || u?.role === 'PLANNER';
-// Perimetro: ADMIN tutte; PLANNER/VIEWER tutte se nessuna assegnazione, altrimenti solo le sedi assegnate
-export const canSeeStruttura = (u, id) => isAdmin(u) || !(u.struttura_ids || []).length || u.struttura_ids.includes(id);
+// Gestione del personale sanitario: amministratori e Responsabile del personale sanitario
+export const isGestione = (u) => u?.role === 'ADMIN' || u?.role === 'RESP_SAN';
+export const isProf = (u) => u?.role === 'PROF';
+// Perimetro: ADMIN/RESP_SAN tutte; PLANNER/VIEWER tutte se nessuna assegnazione, altrimenti solo le sedi assegnate; PROF nessuna
+export const canSeeStruttura = (u, id) => !isProf(u) && (isGestione(u) || !(u.struttura_ids || []).length || u.struttura_ids.includes(id));
+// Sedi di cui l'utente è gestore (email del site manager in Anagrafica della sede): può confermare le presenze
+export async function siteManagerSedi(u) {
+  if (!u) return [];
+  return (await many(`SELECT id FROM strutture WHERE deleted_at IS NULL AND lower(coalesce(data->>'siteManagerEmail','')) = lower($1)`, [u.email])).map((r) => r.id);
+}
+export async function canConfirmPresenze(u, sedeId) { return isGestione(u) || (await siteManagerSedi(u)).includes(sedeId); }
+// I professionisti usano solo il proprio portale
+export const PROF_PREFIXES = ['/api/auth/', '/api/portale/', '/api/health'];
 export const canEditStruttura = (u, id) => canEdit(u) && canSeeStruttura(u, id);

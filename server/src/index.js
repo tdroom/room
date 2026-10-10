@@ -15,6 +15,9 @@ import adminRoutes from './routes/admin.js';
 import struttureRoutes from './routes/strutture.js';
 import calendarioRoutes from './routes/calendario.js';
 import commsRoutes from './routes/comms.js';
+import personaleRoutes from './routes/personale.js';
+import portaleRoutes from './routes/portale.js';
+import { PROF_PREFIXES } from './lib/access.js';
 import { startScheduler } from './lib/alerts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -73,6 +76,10 @@ app.get('/api/health', async (_req, res) => {
 });
 app.use('/api/auth', authRoutes);
 app.use('/api', requireAuth);
+// I professionisti (ruolo PROF) usano solo il proprio portale
+app.use('/api', (req, _res, next) => (req.user?.role === 'PROF' && !PROF_PREFIXES.some((p) => req.originalUrl.startsWith(p)) ? next(new HttpError(403, 'Area riservata al personale interno')) : next()));
+app.use('/api/personale', personaleRoutes);
+app.use('/api/portale', portaleRoutes);
 app.use('/api/strutture', struttureRoutes);
 app.use('/api/calendario', calendarioRoutes);
 app.use('/api/comms', commsRoutes);

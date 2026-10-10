@@ -70,7 +70,7 @@ export default function Settings() {
         )}
       </Card>
       <Card title="Avvisi automatici sulle criticità" className="mt">
-        {!settings.data ? <Loading /> : (() => { const c = cfg || { crit_soglia: settings.data.crit_soglia, crit_alert_enabled: settings.data.crit_alert_enabled, crit_alert_hour: settings.data.crit_alert_hour }; return <>
+        {!settings.data ? <Loading /> : (() => { const c = cfg || { crit_soglia: settings.data.crit_soglia, crit_alert_enabled: settings.data.crit_alert_enabled, crit_alert_hour: settings.data.crit_alert_hour, rendiconto_cc: settings.data.rendiconto_cc, resp_san_nome: settings.data.resp_san_nome }; return <>
           <p>Ogni giorno all'ora indicata il sistema ricalcola la pianificazione di tutte le sedi; se una sede ha un numero di criticità alte pari o superiore alla soglia, invia una email agli amministratori e all'email della sede. Il cruscotto mostra comunque il banner in tempo reale.</p>
           <div className="row">
             <Field label="Soglia criticità alte"><input type="number" min="1" max="999" value={c.crit_soglia} onChange={(e) => setCfg({ ...c, crit_soglia: e.target.value })} style={{ width: 100 }} /></Field>
@@ -80,6 +80,16 @@ export default function Settings() {
             <button className="btn ghost" onClick={sendNow}>Invia ora l'avviso</button>
           </div>
           <p className="small muted">Invio email: {settings.data.mail?.configured ? <Badge tone="green">Microsoft 365 · {settings.data.mail.from}</Badge> : <Badge tone="red">non configurato (GRAPH_SENDER + permesso Mail.Send)</Badge>}{settings.data.crit_alert_last_run ? ` · ultimo controllo ${settings.data.crit_alert_last_run}` : ''}</p>
+        </>; })()}
+      </Card>
+      <Card title="Personale sanitario: rendiconti" className="mt">
+        {!settings.data ? <Loading /> : (() => { const c = cfg || { crit_soglia: settings.data.crit_soglia, crit_alert_enabled: settings.data.crit_alert_enabled, crit_alert_hour: settings.data.crit_alert_hour, rendiconto_cc: settings.data.rendiconto_cc, resp_san_nome: settings.data.resp_san_nome }; return <>
+          <p>Il rendiconto mensile approvato dal Responsabile del personale sanitario viene inviato al professionista con questi indirizzi in copia (amministrazione e backoffice per la fatturazione). Il Responsabile è l'utente con profilo "Responsabile personale sanitario" (da Utenti).</p>
+          <div className="row">
+            <Field label="Copia conoscenza rendiconti (più indirizzi separati da virgola)"><input value={c.rendiconto_cc || ''} onChange={(e) => setCfg({ ...c, rendiconto_cc: e.target.value })} style={{ width: 420 }} /></Field>
+            <Field label="Nome del Responsabile (nelle email)"><input value={c.resp_san_nome || ''} onChange={(e) => setCfg({ ...c, resp_san_nome: e.target.value })} style={{ width: 220 }} /></Field>
+            <button className="btn" disabled={!cfg} onClick={saveCfg}>Salva</button>
+          </div>
         </>; })()}
       </Card>
       <Card title="Registro email" className="mt" flush>

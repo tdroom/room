@@ -20,17 +20,34 @@ Invio email: Microsoft Graph con la stessa registrazione app del login (permesso
 
 Salvataggio: automatico 1,5 secondi dopo ogni modifica (Ctrl+S forza). Ogni salvataggio crea una versione in cronologia (ripristinabile). Controllo di concorrenza: se due persone salvano la stessa sede, la seconda riceve l'avviso e ricarica la versione più recente; chi ha una sede aperta vede le modifiche dei colleghi entro 30 secondi. Eliminazione nel cestino (ripristinabile dall'amministratore), backup JSON completo e importazione (anche dei file della versione precedente).
 
+## Personale sanitario (v2.0)
+
+Modulo per i professionisti (medici, infermieri, tecnici, ostetriche…) che collaborano con le sedi: l'operazione opposta rispetto al simulatore, cioè i professionisti offrono disponibilità e la struttura valuta cosa integrare, quando e dove.
+
+- Professionisti: anagrafica completa (dati anagrafici e fiscali, contatti, IBAN; profilo professionale, albo, ECM, discipline, competenze su attrezzature, sedi abilitate; rapporto di collaborazione e scadenze; assicurazione RC; documenti con scadenza: CV, identità, albo, polizza, titoli, contratto, privacy) e **modalità di compenso**: a ore (tariffa base + eventuali tariffe diverse per sede) o fisso mensile, con regime fiscale, cassa previdenziale, IVA e ritenuta per il calcolo indicativo della fattura. "Importa dalle schede di sede" censisce in un colpo tutte le persone già presenti nelle sedi (collegate per nome).
+- Accesso del professionista: dalla scheda, "Invita al portale" crea l'utente con profilo **Professionista** e invia via email un link (valido 7 giorni) per scegliere la password; chi ha un account Microsoft 365 del tenant entra anche con quello. Il professionista vede solo il proprio portale: riepilogo e contatti, **le sue disponibilità** (ricorrenti per giorno della settimana o per data, con orari e sedi), turni confermati e presenze registrate, rendiconti approvati (PDF per la fattura), bacheca con candidature.
+- Turni: pianificazione mensile per sede (calendario), anche generata dalla settimana-tipo delle sedi (medici → ambulatori e sanitari di supporto, saltando le chiusure); turni scoperti con profilo richiesto; suggerimento dei professionisti disponibili nella fascia; **conferma del mese** che lo rende visibile a tutti e ai professionisti (email di avviso se configurata).
+- Presenze: il **gestore della sede** (utente la cui email è indicata come "Email del site manager" nell'Anagrafica della sede; non modifica la pianificazione) conferma ogni giorno chi era presente, dalle ore alle ore, partendo dai turni o dalla pianificazione, con presenze extra e assenze. Amministratori e Responsabile possono confermare per tutte le sedi.
+- Rendiconti: calcolo mensile per professionista (ore confermate × tariffa, o fisso), con oneri indicativi; flusso Bozza → Da approvare → **Approvato e inviato** dal Responsabile del personale sanitario (profilo **Responsabile personale sanitario**, da assegnare a Federico Stabile in Utenti): l'email con il PDF parte al professionista con copia ad amministrazione e backoffice (indirizzi in Impostazioni). Le presenze rendicontate restano bloccate.
+- Fabbisogno: turni scoperti del mese e sessioni della settimana-tipo senza supporto sanitario, confrontati con l'offerta di disponibilità (candidati per fascia, assegnazione in un clic, pubblicazione in bacheca), fabbisogno per profilo.
+- Bacheca: posizioni aperte (turni scoperti, attività ricorrenti) proposte ai professionisti; candidature e accettazione (che assegna il turno).
+- Statistiche: ore pianificate e confermate, copertura dei turni, costo per sede/profilo/professionista, andamento mensile, offerta di disponibilità; PDF ed Excel.
+
+Nessuna email parte in automatico: inviti, conferme dei turni e rendiconti sono azioni esplicite di un utente.
+
 ## Profili
 
 - Amministratore: tutto, più utenti, backup e cestino, registro attività.
 - Pianificatore: modifica le sedi (tutte, oppure solo quelle assegnate).
-- Consultazione: vede e scarica PDF/Excel, non modifica.
+- Consultazione: vede e scarica PDF/Excel, non modifica. Se la sua email è indicata come site manager di una sede, conferma le presenze di quella sede.
+- Responsabile personale sanitario: professionisti, turni, presenze, rendiconti (approvazione e invio), bacheca, fabbisogno, statistiche; consulta le sedi.
+- Professionista: solo il proprio portale (disponibilità, turni, presenze, rendiconti, bacheca). Si crea con l'invito dalla scheda del professionista.
 
 Accesso con Microsoft 365 (Entra ID): chi ha un account del tenant Toscana Diagnostica entra e viene registrato da solo al primo accesso con profilo Consultazione (`ENTRA_AUTO_ROLE`, domini in `ENTRA_ALLOWED_DOMAINS`); l'amministratore lo promuove da Utenti. Collaboratori esterni: email e password, con verifica in due passaggi obbligatoria per gli amministratori locali.
 
 ## Architettura
 
-- server/: Node.js 22, Express, PostgreSQL 16. Sessioni su database, CSRF (header `X-Requested-With: td-room`), rate limit sul login, audit log. Le sedi sono documenti JSONB (stesso modello dati della versione precedente) con i binari (logo, planimetria PDF e immagine) in tabella separata e cronologia per sede (max 500 versioni).
+- server/: Node.js 22, Express, PostgreSQL 16. Sessioni su database, CSRF (header `X-Requested-With: td-room`), rate limit sul login, audit log. Tabelle v2.0: professionisti (dati JSONB), professionista_docs, inviti, disponibilita, turni, turni_mesi, presenze, rendiconti, posizioni, candidature. Le sedi sono documenti JSONB (stesso modello dati della versione precedente) con i binari (logo, planimetria PDF e immagine) in tabella separata e cronologia per sede (max 500 versioni).
 - web/: React 18, Vite. Il motore di pianificazione e l'interfaccia di sede (`web/src/planner/planner.jsx`) sono il codice della versione artifact, portato senza modifiche funzionali; CSS originale scopato sotto `.rp`.
 - shared/engine.js: motore di pianificazione condiviso tra frontend e server (il server lo usa per gli avvisi).
 - Docker: immagine unica (build Vite + server). `render.yaml` per Render (Blueprint), `docker-compose.yml` per VPS con Caddy (HTTPS automatico) e backup giornaliero del database.
@@ -72,6 +89,7 @@ cd server && npm test                       # test API end-to-end (server avviat
 - auth: config, login, totp, logout, me, change-password, totp/setup, totp/enable, entra/login, entra/callback
 - strutture: GET (elenco alfabetico, `?deleted=1` cestino), GET /:id, GET /:id/blob/:kind, POST, PUT /:id (con `version`, risponde 409 `VERSION_CONFLICT`), DELETE /:id (cestino; `?confirm=DEFINITIVO` dal cestino), POST /:id/restore, GET /:id/history, GET /:id/history/:hid, POST /:id/history/:hid/restore
 - calendario/eventi (GET `?dal&al`, POST, PUT /:id, DELETE /:id) · comms/status, comms/invia (allegato PDF base64), comms/log · criticita (GET), criticita/invia (POST, admin)
+- personale/* (gestione): professionisti (CRUD, importa-da-sedi, invita, docs), disponibilita, turni (+ genera, mesi/:mese/conferma|riapri), presenze (sedi-gestite, giorno, conferma), rendiconti (anteprima, genera, :id/stato, :id/approva), posizioni e candidature, fabbisogno, statistiche · portale/* (professionista): me, sedi, disponibilita, turni, presenze, rendiconti, posizioni/:id/candidati · auth/invito/:token (GET verifica, POST imposta password)
 - users (CRUD, reset-password, reset-totp), settings (GET, PUT soglia/ora/avvisi), backup (GET, `?trash=1`), backup/import (`mode` merge|replace), audit
 
 ## Backup e ripristino

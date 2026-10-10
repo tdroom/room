@@ -89,6 +89,31 @@ r.get('/me', ah(async (req, res) => {
   res.json({ user: req.user, authMethod: req.session.authMethod, onboarding: onboardingState(req) });
 }));
 
+// Inviti dei professionisti: verifica del token e impostazione della password (pubblici)
+import crypto from 'node:crypto';
+const tokenHash = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
+async function invitoValido(token) {
+  const inv = await one('SELECT i.*, u.email, u.full_name, u.active FROM inviti i JOIN users u ON u.id=i.user_id WHERE i.token_hash=$1', [tokenHash(token)]);
+  if (!inv || inv.used_at || new Date(inv.expires_at) < new Date() || !inv.active) return null;
+  return inv;
+}
+r.get('/invito/:token', ah(async (req, res) => {
+  const inv = await invitoValido(req.params.token);
+  if (!inv) return res.status(404).json({ error: 'Invito non valido o scaduto: chiedi un nuovo invito al Responsabile del personale sanitario' });
+  res.json({ email: inv.email, nome: inv.full_name });
+}));
+r.post('/invito/:token', loginLimiter, ah(async (req, res) => {
+  const inv = await invitoValido(req.params.token);
+  if (!inv) throw new HttpError(404, 'Invito non valido o scaduto');
+  const { password } = parse(z.object({ password: pwdSchemaLazy() }), req.body);
+  await q('UPDATE users SET password_hash=$2, must_change_password=false, auth_provider=CASE WHEN auth_provider=\'ENTRA\' THEN \'BOTH\' ELSE auth_provider END, updated_at=now() WHERE id=$1', [inv.user_id, await bcrypt.hash(password, 12)]);
+  await q('UPDATE inviti SET used_at=now() WHERE id=$1', [inv.id]);
+  const user = await one('SELECT * FROM users WHERE id=$1', [inv.user_id]);
+  await completeLogin(req, user, 'LOCAL');
+  res.json({ ok: true });
+}));
+function pwdSchemaLazy() { return pwdSchema; }
+
 const pwdSchema = z.string().min(12, 'minimo 12 caratteri')
   .regex(/[A-Z]/, 'serve una maiuscola').regex(/[a-z]/, 'serve una minuscola').regex(/\d/, 'serve un numero');
 

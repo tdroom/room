@@ -71,3 +71,54 @@ test('criticità e soglia', async () => {
   assert.equal((await call('PUT', '/settings', { crit_soglia: '8' })).status, 200);
   assert.equal((await call('GET', '/criticita')).data.soglia, 8);
 });
+
+// ---------- v2.0 · Personale sanitario ----------
+let profId, profCookie = '';
+async function callAs(ck, method, path, body) {
+  const r = await fetch(BASE + '/api' + path, { method, headers: { ...H, cookie: ck }, body: body ? JSON.stringify(body) : undefined, redirect: 'manual' });
+  const sc = r.headers.get('set-cookie'); const ct = r.headers.get('content-type') || '';
+  return { status: r.status, cookie: sc ? sc.split(';')[0] : ck, data: ct.includes('json') ? await r.json() : await r.text() };
+}
+test('personale: import dalle sedi, anagrafica completa e compenso', async () => {
+  const imp = await call('POST', '/personale/professionisti/importa-da-sedi'); assert.equal(imp.status, 200);
+  const list = (await call('GET', '/personale/professionisti')).data; assert.ok(list.length >= 60);
+  const nome = 'Test Infermiera ' + Date.now().toString(36);
+  const c = await call('POST', '/personale/professionisti', { nome, tipo: 'sanitario', profilo: 'Infermiere', email: `inf.${Date.now().toString(36)}@esempio.it`, dati: { anagrafica: { codiceFiscale: 'TSTNFR80A41H501Z' }, compenso: { tipo: 'ORARIO', tariffaOraria: 25, cassaPrevidenziale: 4, regime: 'FORFETTARIO' } } });
+  assert.equal(c.status, 201, JSON.stringify(c.data)); profId = c.data.id;
+  const g = await call('GET', `/personale/professionisti/${profId}`); assert.equal(g.data.dati.compenso.tariffaOraria, 25);
+  const doc = await call('POST', `/personale/professionisti/${profId}/docs`, { tipo: 'CV', nome: 'cv.pdf', mime: 'application/pdf', base64: Buffer.from('%PDF-1.4 t').toString('base64') }); assert.equal(doc.status, 201);
+});
+test('personale: invito, accesso del professionista e perimetro del portale', async () => {
+  const inv = await call('POST', `/personale/professionisti/${profId}/invita`, {}); assert.equal(inv.status, 200); assert.ok(inv.data.link.includes('/invito/'));
+  const token = inv.data.link.split('/invito/')[1];
+  assert.equal((await callAs('', 'GET', `/auth/invito/${token}`)).status, 200);
+  const acc = await callAs('', 'POST', `/auth/invito/${token}`, { password: 'PasswordProf-2026x' }); assert.equal(acc.status, 200, JSON.stringify(acc.data)); profCookie = acc.cookie;
+  assert.equal((await callAs(profCookie, 'GET', '/portale/me')).status, 200);
+  assert.equal((await callAs(profCookie, 'GET', '/strutture')).status, 403);
+  assert.equal((await callAs(profCookie, 'POST', '/portale/disponibilita', { kind: 'SETTIMANALE', giorno: 1, ora_da: '08:00', ora_a: '14:00', sedi: [] })).status, 201);
+  assert.equal((await callAs(profCookie, 'POST', '/portale/disponibilita', { kind: 'SETTIMANALE', giorno: 1, ora_da: '14:00', ora_a: '10:00' })).status, 400);
+});
+test('personale: turni, conferma mese, presenze, rendiconto approvato e bacheca', async () => {
+  const list = (await call('GET', '/strutture')).data; const sede = list[0].id;
+  const mese = '2027-03';
+  const t = await call('POST', '/personale/turni', { sede_id: sede, data: `${mese}-02`, ora_da: '08:00', ora_a: '12:00', prof_id: profId, attivita: 'Prelievi' }); assert.equal(t.status, 201);
+  assert.equal((await call('POST', '/personale/turni', { sede_id: sede, data: `${mese}-02`, ora_da: '10:00', ora_a: '13:00', prof_id: profId })).status, 400, 'sovrapposizione rifiutata');
+  const sc = await call('POST', '/personale/turni', { sede_id: sede, data: `${mese}-02`, ora_da: '14:00', ora_a: '18:00', profilo: 'Infermiere' }); assert.equal(sc.status, 201);
+  assert.equal((await callAs(profCookie, 'GET', `/portale/turni?mese=${mese}`)).data.confermato, false);
+  assert.equal((await call('POST', `/personale/turni/mesi/${mese}/conferma`, { notifica: false })).status, 200);
+  assert.equal((await callAs(profCookie, 'GET', `/portale/turni?mese=${mese}`)).data.turni.length, 1);
+  const fb = await call('GET', `/personale/fabbisogno?mese=${mese}`); assert.ok(fb.data.turniScoperti.some((x) => x.turnoId === sc.data.id));
+  const pr = await call('POST', '/personale/presenze/conferma', { sede_id: sede, data: `${mese}-02`, items: [{ prof_id: profId, ora_da: '08:00', ora_a: '12:30', turno_id: t.data.id, origine: 'TURNO' }] }); assert.equal(pr.status, 200, JSON.stringify(pr.data));
+  const gen = await call('POST', '/personale/rendiconti/genera', { mese, prof_ids: [profId] }); assert.equal(gen.data.created + gen.data.updated, 1);
+  const rl = (await call('GET', `/personale/rendiconti?mese=${mese}`)).data.find((x) => x.prof_id === profId); assert.equal(Number(rl.ore), 4.5); assert.equal(Number(rl.importo), 112.5);
+  assert.equal((await callAs(profCookie, 'GET', '/portale/rendiconti')).data.some((x) => x.id === rl.id), false, 'bozza non visibile al professionista');
+  const ap = await call('POST', `/personale/rendiconti/${rl.id}/approva`, { attachment: { filename: 'R.pdf', base64: Buffer.from('%PDF-1.4').toString('base64') } }); assert.equal(ap.status, 200);
+  assert.ok((await callAs(profCookie, 'GET', '/portale/rendiconti')).data.some((x) => x.id === rl.id));
+  assert.equal((await call('POST', '/personale/presenze/conferma', { sede_id: sede, data: `${mese}-02`, items: [{ id: pr.data.ids[0], prof_id: profId, ora_da: '08:00', ora_a: '12:00' }] })).status, 400, 'presenza bloccata dal rendiconto');
+  const po = await call('POST', '/personale/posizioni', { titolo: 'Test posizione', sede_id: sede, profilo: 'Infermiere', turno_id: sc.data.id }); assert.equal(po.status, 201);
+  assert.equal((await callAs(profCookie, 'POST', `/portale/posizioni/${po.data.id}/candidati`, { nota: 'ok' })).status, 201);
+  const cands = (await call('GET', `/personale/posizioni/${po.data.id}/candidature`)).data; assert.equal(cands.length, 1);
+  assert.equal((await call('POST', `/personale/candidature/${cands[0].id}/accetta`)).status, 200);
+  const turni = (await call('GET', `/personale/turni?mese=${mese}`)).data.turni; assert.equal(turni.find((x) => x.id === sc.data.id).prof_id, profId, 'turno assegnato dalla candidatura');
+  const st = await call('GET', `/personale/statistiche?dal=${mese}-01&al=${mese}-31`); assert.equal(st.status, 200); assert.ok(st.data.totali.orePresenze >= 4.5);
+});
