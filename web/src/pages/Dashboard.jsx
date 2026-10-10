@@ -4,12 +4,17 @@ import { useAuth } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Kpi, Card, Badge } from '../components/ui.jsx';
 import { itDateTime } from '../format.js';
 import { computePlan, durTxt } from '../planner/planner.jsx';
+import { buildNetwork } from '../lib/network.js';
+import { pdfReportDirezione, xlsxReportDirezione } from '../lib/exports.js';
 import { sedeLabel } from './Sedi.jsx';
 
 export default function Dashboard() {
   const { user } = useAuth();
   const nav = useNavigate();
   const { data, error } = useApi('/strutture');
+  const crit = useApi('/criticita');
+  const net = useMemo(() => (data ? buildNetwork(data) : null), [data]);
+  const over = (crit.data?.sedi || []).filter((s) => s.sopraSoglia);
   const rows = useMemo(() => (data || []).map((s) => {
     let plan = null; try { plan = computePlan(s); } catch { plan = null; }
     const med = s.personale.filter((p) => p.tipo === 'medico' && p.nome.trim()).length;
@@ -20,8 +25,11 @@ export default function Dashboard() {
   const tot = rows.reduce((t, r) => ({ sedi: t.sedi + 1, amb: t.amb + r.s.ambulatori.length, med: t.med + r.med, sess: t.sess + (r.plan ? r.plan.assigns.length : 0), alte: t.alte + r.alte, free: t.free + r.free }), { sedi: 0, amb: 0, med: 0, sess: 0, alte: 0, free: 0 });
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Cruscotto</h1><div className="sub">Ciao {user.full_name.split(' ')[0]}: lo stato della pianificazione di tutte le sedi, ricalcolato adesso sui dati condivisi.</div></div></div>
+      <div className="page-head"><div><h1>Cruscotto</h1><div className="sub">Ciao {user.full_name.split(' ')[0]}: lo stato della pianificazione di tutte le sedi, ricalcolato adesso sui dati condivisi.</div></div>
+        {net && <div className="row"><button className="btn ghost" onClick={() => { const { doc, filename } = pdfReportDirezione(net); doc.save(filename); }}>Report direzione PDF</button><button className="btn ghost" onClick={() => xlsxReportDirezione(net)}>Report direzione Excel</button></div>}
+      </div>
       <ErrorBox error={error} />
+      {over.length > 0 && <div className="alert err" style={{ marginBottom: 14 }}>Sopra la soglia di {crit.data.soglia} criticità alte: {over.map((s) => <span key={s.id} className="chip" style={{ background: '#fff', cursor: 'pointer' }} onClick={() => nav(`/sedi/${s.id}`)}>{s.denominazione}{s.nomeSede ? ' · ' + s.nomeSede : ''} ({s.alte})</span>)}{user.role === 'ADMIN' && <span className="small"> · soglia e avvisi email in Impostazioni</span>}</div>}
       {!data ? <Loading /> : <>
         <div className="grid g5" style={{ marginBottom: 18 }}>
           <Kpi label="Sedi" value={tot.sedi} />

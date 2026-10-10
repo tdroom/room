@@ -4,6 +4,7 @@ WORKDIR /web
 COPY web/package*.json ./
 RUN npm ci
 COPY web/ .
+COPY shared/ /shared/
 RUN npm run build
 
 # Runtime
@@ -13,6 +14,7 @@ WORKDIR /app
 COPY server/package*.json ./
 RUN npm ci --omit=dev
 COPY server/ .
+COPY shared/ ./shared/
 COPY --from=web /web/dist ./public
 RUN addgroup -S td && adduser -S td -G td && chown -R td:td /app
 USER td

@@ -13,6 +13,9 @@ import { HttpError } from './lib/util.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 import struttureRoutes from './routes/strutture.js';
+import calendarioRoutes from './routes/calendario.js';
+import commsRoutes from './routes/comms.js';
+import { startScheduler } from './lib/alerts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -71,6 +74,8 @@ app.get('/api/health', async (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api', requireAuth);
 app.use('/api/strutture', struttureRoutes);
+app.use('/api/calendario', calendarioRoutes);
+app.use('/api/comms', commsRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Endpoint inesistente')));
 
@@ -99,5 +104,6 @@ async function start() {
   }
   await migrate();
   app.listen(config.port, () => console.log(`TD Room Planning in ascolto su :${config.port}`));
+  if (process.env.DISABLE_SCHEDULER !== 'true') startScheduler();
 }
 start().catch((e) => { console.error(e); process.exit(1); });

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../api.js';
-import { useApi, Card, Loading, Empty, ErrorBox, useToast, Badge } from '../components/ui.jsx';
+import { useApi, Card, Loading, Empty, ErrorBox, useToast, Badge, Field } from '../components/ui.jsx';
 import { itDateTime } from '../format.js';
 import { sedeLabel } from './Sedi.jsx';
 
@@ -8,6 +8,10 @@ export default function Settings() {
   const toast = useToast();
   const trash = useApi('/strutture?deleted=1');
   const settings = useApi('/settings');
+  const maillog = useApi('/comms/log?limit=100');
+  const [cfg, setCfg] = useState(null);
+  const saveCfg = async () => { try { await api.put('/settings', cfg); toast('Impostazioni salvate'); settings.reload(); } catch (e) { setErr(e); } };
+  const sendNow = async () => { try { const r = await api.post('/criticita/invia'); toast(r.over ? `Avviso inviato per ${r.over} sedi` : 'Nessuna sede sopra soglia'); maillog.reload(); } catch (e) { setErr(e); } };
   const [err, setErr] = useState(null);
   const [mode, setMode] = useState('merge');
   const [res, setRes] = useState(null);
@@ -36,7 +40,7 @@ export default function Settings() {
 
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Backup e cestino</h1><div className="sub">Copia di sicurezza di tutti i dati, importazione da backup, ripristino delle sedi eliminate</div></div></div>
+      <div className="page-head"><div><h1>Impostazioni e backup</h1><div className="sub">Soglia delle criticità e avvisi automatici, copia di sicurezza, importazione, cestino, registro email</div></div></div>
       <ErrorBox error={err} />
       <div className="grid g2">
         <Card title="Backup completo">
@@ -64,6 +68,24 @@ export default function Settings() {
             ))}</tbody>
           </table></div>
         )}
+      </Card>
+      <Card title="Avvisi automatici sulle criticità" className="mt">
+        {!settings.data ? <Loading /> : (() => { const c = cfg || { crit_soglia: settings.data.crit_soglia, crit_alert_enabled: settings.data.crit_alert_enabled, crit_alert_hour: settings.data.crit_alert_hour }; return <>
+          <p>Ogni giorno all'ora indicata il sistema ricalcola la pianificazione di tutte le sedi; se una sede ha un numero di criticità alte pari o superiore alla soglia, invia una email agli amministratori e all'email della sede. Il cruscotto mostra comunque il banner in tempo reale.</p>
+          <div className="row">
+            <Field label="Soglia criticità alte"><input type="number" min="1" max="999" value={c.crit_soglia} onChange={(e) => setCfg({ ...c, crit_soglia: e.target.value })} style={{ width: 100 }} /></Field>
+            <Field label="Ora dell'invio"><input type="number" min="0" max="23" value={c.crit_alert_hour} onChange={(e) => setCfg({ ...c, crit_alert_hour: e.target.value })} style={{ width: 100 }} /></Field>
+            <Field label="Avvisi email"><select value={c.crit_alert_enabled} onChange={(e) => setCfg({ ...c, crit_alert_enabled: e.target.value })} style={{ width: 'auto' }}><option value="true">attivi</option><option value="false">disattivati</option></select></Field>
+            <button className="btn" disabled={!cfg} onClick={saveCfg}>Salva</button>
+            <button className="btn ghost" onClick={sendNow}>Invia ora l'avviso</button>
+          </div>
+          <p className="small muted">Invio email: {settings.data.mail?.configured ? <Badge tone="green">Microsoft 365 · {settings.data.mail.from}</Badge> : <Badge tone="red">non configurato (GRAPH_SENDER + permesso Mail.Send)</Badge>}{settings.data.crit_alert_last_run ? ` · ultimo controllo ${settings.data.crit_alert_last_run}` : ''}</p>
+        </>; })()}
+      </Card>
+      <Card title="Registro email" className="mt" flush>
+        {!maillog.data ? <Loading /> : !maillog.data.length ? <Empty>Nessuna email registrata</Empty> : (
+          <div className="table-wrap"><table className="t"><thead><tr><th>Quando</th><th>Tipo</th><th>A</th><th>Oggetto</th><th>Allegato</th><th>Esito</th><th>Da</th></tr></thead>
+            <tbody>{maillog.data.map((l) => <tr key={l.id}><td className="small">{itDateTime(l.at)}</td><td className="mono small">{l.kind}</td><td className="small">{l.to_addr}</td><td className="small">{l.subject}</td><td className="small">{l.attachment_name}</td><td>{l.status === 'INVIATA' ? <Badge tone="green">inviata</Badge> : l.status === 'NON_CONFIGURATA' ? <Badge>non configurata</Badge> : <Badge tone="red" >{l.status}{l.error ? `: ${l.error}` : ''}</Badge>}</td><td className="small muted">{l.sent_by_name || 'sistema'}</td></tr>)}</tbody></table></div>)}
       </Card>
       <Card title="Accesso Microsoft 365" className="mt">
         {!settings.data ? <Loading /> : <>

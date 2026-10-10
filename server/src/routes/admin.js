@@ -7,6 +7,8 @@ import { ah, bad, notFound, audit, parse } from '../lib/util.js';
 import { requireRole } from '../lib/access.js';
 import { BLOB_KINDS, splitStruttura, joinStruttura, sortStrutture } from '../lib/strutture.js';
 import { config } from '../config.js';
+import { criticita, runDailyAlert } from '../lib/alerts.js';
+import { mailStatus } from '../lib/mailer.js';
 
 const r = Router();
 const tempPassword = () => crypto.randomBytes(9).toString('base64url').replace(/[-_]/g, 'x') + 'A1!';
@@ -88,8 +90,20 @@ r.get('/settings', ah(async (_req, res) => {
   const rows = await many('SELECT key, value FROM app_settings');
   const s = Object.fromEntries(rows.map((x) => [x.key, x.value]));
   let brand = null; try { brand = s.brand ? JSON.parse(s.brand) : null; } catch { brand = null; }
-  res.json({ brand, entraEnabled: config.entra.enabled, autoProvisionRole: config.entra.autoProvisionRole, allowedDomains: config.entra.allowedDomains });
+  res.json({ brand, entraEnabled: config.entra.enabled, autoProvisionRole: config.entra.autoProvisionRole, allowedDomains: config.entra.allowedDomains, mail: mailStatus(),
+    crit_soglia: s.crit_soglia || '5', crit_alert_enabled: s.crit_alert_enabled || 'true', crit_alert_hour: s.crit_alert_hour || '8', crit_alert_last_run: s.crit_alert_last_run || '' });
 }));
+
+r.put('/settings', requireRole('ADMIN'), ah(async (req, res) => {
+  const d = parse(z.object({ crit_soglia: z.string().regex(/^\d{1,3}$/).optional(), crit_alert_enabled: z.enum(['true', 'false']).optional(), crit_alert_hour: z.string().regex(/^([01]?\d|2[0-3])$/).optional() }), req.body);
+  for (const [k, v] of Object.entries(d)) await q('INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', [k, v]);
+  await audit(req, 'SETTINGS_UPDATE', 'settings', null, d);
+  res.json({ ok: true });
+}));
+
+// Criticità di tutte le sedi rispetto alla soglia (banner del cruscotto); invio manuale dell'avviso
+r.get('/criticita', ah(async (_req, res) => res.json(await criticita())));
+r.post('/criticita/invia', requireRole('ADMIN'), ah(async (req, res) => { const out = await runDailyAlert({ force: true }); await audit(req, 'AVVISO_CRITICITA_MANUALE', 'strutture', null, { over: out.over }); res.json(out); }));
 
 // ---------------- Backup completo e importazione ----------------
 r.get('/backup', requireRole('ADMIN'), ah(async (req, res) => {

@@ -48,3 +48,21 @@ test('cestino e ripristino', async () => {
 test('backup completo', async () => {
   const r = await call('GET', '/backup'); assert.equal(r.status, 200); assert.ok(Array.isArray(r.data.data.strutture)); assert.ok(r.data.data.strutture.length >= 7);
 });
+test('calendario: eventi CRUD', async () => {
+  const c = await call('POST', '/calendario/eventi', { kind: 'ASSENZA', persona_key: 'azas leonidas', persona_nome: 'Leonidas Azas', dal: '2026-11-02', al: '2026-11-06', sost_nome: 'Somigli Lorenzo', nota: 'test' });
+  assert.equal(c.status, 201, JSON.stringify(c.data));
+  const l = await call('GET', '/calendario/eventi?dal=2026-11-01&al=2026-11-30'); assert.ok(l.data.some((e) => e.id === c.data.id));
+  const bad = await call('POST', '/calendario/eventi', { kind: 'CHIUSURA', dal: '2026-11-02', al: '2026-11-01' }); assert.equal(bad.status, 400);
+  assert.equal((await call('PUT', `/calendario/eventi/${c.data.id}`, { kind: 'ASSENZA', persona_key: 'azas leonidas', persona_nome: 'Leonidas Azas', dal: '2026-11-02', al: '2026-11-07' })).status, 200);
+  assert.equal((await call('DELETE', `/calendario/eventi/${c.data.id}`)).status, 200);
+});
+test('comunicazioni: registro invii anche senza email configurata', async () => {
+  const r = await call('POST', '/comms/invia', { kind: 'LIBERA', to: ['test@esempio.it'], subject: 'Prova', body: 'Testo di prova' });
+  assert.equal(r.status, 200); assert.ok(['INVIATA', 'NON_CONFIGURATA', 'FALLITA'].includes(r.data.status));
+  const log = await call('GET', '/comms/log'); assert.ok(log.data.some((x) => x.subject === 'Prova'));
+});
+test('criticità e soglia', async () => {
+  const r = await call('GET', '/criticita'); assert.equal(r.status, 200); assert.ok(r.data.sedi.length >= 7); assert.ok(r.data.soglia > 0);
+  assert.equal((await call('PUT', '/settings', { crit_soglia: '8' })).status, 200);
+  assert.equal((await call('GET', '/criticita')).data.soglia, 8);
+});

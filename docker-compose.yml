@@ -37,6 +37,7 @@ services:
       ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
       ENTRA_AUTO_ROLE: ${ENTRA_AUTO_ROLE:-VIEWER}
       ENTRA_ALLOWED_DOMAINS: ${ENTRA_ALLOWED_DOMAINS:-toscanadiagnostica.it}
+      GRAPH_SENDER: ${GRAPH_SENDER:-}
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped

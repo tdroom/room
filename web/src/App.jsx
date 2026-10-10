@@ -7,6 +7,8 @@ import Login from './pages/Login.jsx';
 import Onboarding from './pages/Onboarding.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Sedi from './pages/Sedi.jsx';
+import Specialisti from './pages/Specialisti.jsx';
+import Calendario from './pages/Calendario.jsx';
 import SedePage from './pages/SedePage.jsx';
 import Users from './pages/Users.jsx';
 import Settings from './pages/Settings.jsx';
@@ -25,13 +27,16 @@ function Shell() {
       <aside className={`side ${open ? 'open' : ''}`}>
         <div className="brand"><img src="/logo-light.svg" alt="Toscana Diagnostica" /><div className="app">Room Planning</div></div>
         <nav>
+          <div className="group">Network</div>
+          <L to="/specialisti" icon="users">Specialisti</L>
           <L to="/" icon="home" end>Cruscotto</L>
+          <L to="/calendario" icon="list">Calendario</L>
           <div className="group">Pianificazione</div>
           <L to="/sedi" icon="pin">Sedi e ambulatori</L>
           {admin && <>
             <div className="group">Amministrazione</div>
             <L to="/utenti" icon="users">Utenti</L>
-            <L to="/impostazioni" icon="gear">Backup e cestino</L>
+            <L to="/impostazioni" icon="gear">Impostazioni e backup</L>
             <L to="/audit" icon="shield">Registro attività</L>
           </>}
         </nav>
@@ -48,6 +53,8 @@ function Shell() {
         <div className="topbar"><button onClick={() => setOpen(!open)} aria-label="Menu">☰</button><img src="/logo-light.svg" alt="" /></div>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/specialisti" element={<Specialisti />} />
+          <Route path="/calendario" element={<Calendario />} />
           <Route path="/sedi" element={<Sedi />} />
           <Route path="/sedi/:id" element={<SedePage />} />
           {admin && <Route path="/utenti" element={<Users />} />}

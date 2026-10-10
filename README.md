@@ -6,7 +6,17 @@ Webapp per la pianificazione, programmazione e controllo degli ambulatori delle 
 
 Per ogni sede (ordinate in automatico in ordine alfabetico): anagrafica (denominazione, nome breve, site manager, logo, orari, parametri del desk di accettazione), ambulatori (mq, WC, specialità, attrezzature, disponibilità, fasce Punto Prelievi, riserva ai medici vincolati), personale (medici con disponibilità, attrezzature richieste, ambulatorio preferenziale/obbligatorio, "sempre nello stesso ambulatorio"; sanitari con profilo e competenze; accettazione con ore contratto, turnazione A/B), planimetria PDF con marcatori, e "Pianificazione e controllo": copertura desk, assegnazione medici → ambulatori, spazi liberi, criticità e ottimizzazioni, filtro per medico, export XLSX e PDF (per ambulatorio, per medico, spazi liberi).
 
-Cruscotto: tutte le sedi con ambulatori, medici, sessioni settimanali, utilizzo, ore libere, criticità, ultimo salvataggio e autore.
+Cruscotto: tutte le sedi con ambulatori, medici, sessioni settimanali, utilizzo, ore libere, criticità, ultimo salvataggio e autore; banner per le sedi oltre la soglia di criticità; report consolidato per la direzione in PDF ed Excel (sedi, utilizzo per ambulatorio, criticità, specialisti, spazi liberi, sessioni).
+
+## Funzioni di rete (v1.1)
+
+- Specialisti (prima voce del menu): medici e professionisti sanitari di tutte le sedi, riconosciuti per nome anche se censiti in più sedi, con l'agenda settimanale unificata (sessioni da titolare, supporto sanitario, disponibilità non allocate). Email dello specialista modificabile da qui (si salva nelle schede di sede). PDF dell'agenda e invio via email con allegato.
+- Simulatore di proposta: inserite le fasce di disponibilità aggiuntiva dello specialista, il sistema cerca in tutte le sedi gli ambulatori liberi compatibili con disciplina e attrezzature richieste (escludendo gli ambulatori riservati ai medici vincolati e le fasce già occupate dallo specialista altrove) e propone gli spazi, per sede e giorno, senza mai toccare attività già pianificate. PDF della proposta e invio via email.
+- Calendario reale: la settimana-tipo applicata alle date, con assenze (con sostituto, suggerito tra i medici della stessa disciplina liberi nella fascia), chiusure di sede e sessioni extra. Filtri per sede e per specialista, PDF della settimana.
+- Confronto versioni: nella cronologia di una sede si scelgono due versioni (A e B) e si vedono le differenze voce per voce (anagrafica, orari, ambulatori, personale).
+- Avvisi automatici: ogni giorno all'ora impostata il server ricalcola le criticità e, per le sedi con criticità alte oltre soglia, invia una email agli amministratori e all'email della sede (soglia, ora e attivazione in Impostazioni; registro email con esito).
+
+Invio email: Microsoft Graph con la stessa registrazione app del login (permesso applicativo `Mail.Send` con consenso amministratore, casella mittente `GRAPH_SENDER`; limitare l'app alla sola casella con una Application Access Policy come per Cash Management). Senza configurazione le comunicazioni vengono comunque registrate e i PDF restano scaricabili.
 
 Salvataggio: automatico 1,5 secondi dopo ogni modifica (Ctrl+S forza). Ogni salvataggio crea una versione in cronologia (ripristinabile). Controllo di concorrenza: se due persone salvano la stessa sede, la seconda riceve l'avviso e ricarica la versione più recente; chi ha una sede aperta vede le modifiche dei colleghi entro 30 secondi. Eliminazione nel cestino (ripristinabile dall'amministratore), backup JSON completo e importazione (anche dei file della versione precedente).
 
@@ -22,6 +32,7 @@ Accesso con Microsoft 365 (Entra ID): chi ha un account del tenant Toscana Diagn
 
 - server/: Node.js 22, Express, PostgreSQL 16. Sessioni su database, CSRF (header `X-Requested-With: td-room`), rate limit sul login, audit log. Le sedi sono documenti JSONB (stesso modello dati della versione precedente) con i binari (logo, planimetria PDF e immagine) in tabella separata e cronologia per sede (max 500 versioni).
 - web/: React 18, Vite. Il motore di pianificazione e l'interfaccia di sede (`web/src/planner/planner.jsx`) sono il codice della versione artifact, portato senza modifiche funzionali; CSS originale scopato sotto `.rp`.
+- shared/engine.js: motore di pianificazione condiviso tra frontend e server (il server lo usa per gli avvisi).
 - Docker: immagine unica (build Vite + server). `render.yaml` per Render (Blueprint), `docker-compose.yml` per VPS con Caddy (HTTPS automatico) e backup giornaliero del database.
 
 ## Dati iniziali
@@ -60,7 +71,8 @@ cd server && npm test                       # test API end-to-end (server avviat
 
 - auth: config, login, totp, logout, me, change-password, totp/setup, totp/enable, entra/login, entra/callback
 - strutture: GET (elenco alfabetico, `?deleted=1` cestino), GET /:id, GET /:id/blob/:kind, POST, PUT /:id (con `version`, risponde 409 `VERSION_CONFLICT`), DELETE /:id (cestino; `?confirm=DEFINITIVO` dal cestino), POST /:id/restore, GET /:id/history, GET /:id/history/:hid, POST /:id/history/:hid/restore
-- users (CRUD, reset-password, reset-totp), settings, backup (GET, `?trash=1`), backup/import (`mode` merge|replace), audit
+- calendario/eventi (GET `?dal&al`, POST, PUT /:id, DELETE /:id) · comms/status, comms/invia (allegato PDF base64), comms/log · criticita (GET), criticita/invia (POST, admin)
+- users (CRUD, reset-password, reset-totp), settings (GET, PUT soglia/ora/avvisi), backup (GET, `?trash=1`), backup/import (`mode` merge|replace), audit
 
 ## Backup e ripristino
 

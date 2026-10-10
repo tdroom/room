@@ -6,6 +6,7 @@ import { Loading, ErrorBox, useToast, Modal, Badge } from '../components/ui.jsx'
 import { itDateTime } from '../format.js';
 import { Struttura, clone, DEF_C } from '../planner/planner.jsx';
 import { split, sedeLabel } from './Sedi.jsx';
+import { diffStrutture } from '../lib/network.js';
 
 const SAVE_DELAY = 1500;
 const POLL_MS = 30000;
@@ -21,6 +22,7 @@ export default function SedePage() {
   const [status, setStatus] = useState('idle'); // idle | dirty | saving | error
   const [err, setErr] = useState(null);
   const [history, setHistory] = useState(null);
+  const [cmp, setCmp] = useState({ a: null, b: null, rows: null, busy: false });
   const base = useRef(null);        // ultimo stato salvato: {lite: json string, blobs:{logo,planPdf,planImg}}
   const strRef = useRef(null); strRef.current = str;
   const metaRef = useRef(meta); metaRef.current = meta;
@@ -132,6 +134,15 @@ export default function SedePage() {
     try { await api.post(`/strutture/${id}/history/${h.id}/restore`); setHistory(null); await load(); toast('Versione ripristinata'); } catch (e) { toast(e.message, 'err'); }
   };
 
+  const compare = async () => {
+    if (!cmp.a || !cmp.b) return;
+    setCmp((c) => ({ ...c, busy: true }));
+    try {
+      const [ha, hb] = await Promise.all([api.get(`/strutture/${id}/history/${cmp.a}`), api.get(`/strutture/${id}/history/${cmp.b}`)]);
+      const [first, second] = ha.version <= hb.version ? [ha, hb] : [hb, ha];
+      setCmp((c) => ({ ...c, busy: false, rows: diffStrutture(first.data, second.data), label: `versione ${first.version} → versione ${second.version}` }));
+    } catch (e) { toast(e.message, 'err'); setCmp((c) => ({ ...c, busy: false })); }
+  };
   if (err) return <div className="page"><ErrorBox error={err} /><button className="btn ghost" onClick={() => nav('/sedi')}>← Sedi</button></div>;
   if (!str) return <div className="page"><Loading text="Caricamento della sede…" /></div>;
   const st = status;
@@ -152,13 +163,21 @@ export default function SedePage() {
         <Modal title={`Cronologia · ${sedeLabel(str)}`} onClose={() => setHistory(null)} wide footer={<button className="btn ghost" onClick={() => setHistory(null)}>Chiudi</button>}>
           {!history.length ? <div className="muted">Nessuna versione registrata</div> : (
             <div className="table-wrap"><table className="t">
-              <thead><tr><th>Versione</th><th>Quando</th><th>Chi</th><th>Ambulatori</th><th>Personale</th><th>Nota</th><th /></tr></thead>
+              <thead><tr><th>Confronta</th><th>Versione</th><th>Quando</th><th>Chi</th><th>Ambulatori</th><th>Personale</th><th>Nota</th><th /></tr></thead>
               <tbody>{history.map((h) => (
-                <tr key={h.id}><td className="mono">{h.version}{h.version === meta.version && <> <Badge tone="green">attuale</Badge></>}</td><td className="small">{itDateTime(h.at)}</td><td>{h.user_name || '–'}</td><td className="num">{h.n_amb}</td><td className="num">{h.n_pers}</td><td className="small muted">{h.note}</td>
+                <tr key={h.id}><td><label className="f inline" style={{ gap: 4 }}><input type="radio" name="cmpA" checked={cmp.a === h.id} onChange={() => setCmp((c) => ({ ...c, a: h.id, rows: null }))} />A</label> <label className="f inline" style={{ gap: 4 }}><input type="radio" name="cmpB" checked={cmp.b === h.id} onChange={() => setCmp((c) => ({ ...c, b: h.id, rows: null }))} />B</label></td><td className="mono">{h.version}{h.version === meta.version && <> <Badge tone="green">attuale</Badge></>}</td><td className="small">{itDateTime(h.at)}</td><td>{h.user_name || '–'}</td><td className="num">{h.n_amb}</td><td className="num">{h.n_pers}</td><td className="small muted">{h.note}</td>
                   <td className="num">{meta.canEdit && h.version !== meta.version && <button className="btn sm ghost" onClick={() => restore(h)}>Ripristina</button>}</td></tr>
               ))}</tbody>
             </table></div>
           )}
+          {history.length > 1 && <div className="row" style={{ marginTop: 10 }}><button className="btn sm" disabled={!cmp.a || !cmp.b || cmp.a === cmp.b || cmp.busy} onClick={compare}>Confronta A e B</button><span className="small muted">Seleziona due versioni: vengono elencate le differenze (anagrafica, orari, ambulatori, personale).</span></div>}
+          {cmp.rows && (
+            <div style={{ marginTop: 12 }}>
+              <h3>Differenze · {cmp.label}</h3>
+              {!cmp.rows.length ? <div className="muted small">Nessuna differenza tra le due versioni.</div> : (
+                <div className="table-wrap"><table className="t"><thead><tr><th>Area</th><th>Voce</th><th>Prima (A)</th><th>Dopo (B)</th></tr></thead>
+                  <tbody>{cmp.rows.map((r, i) => <tr key={i}><td><Badge>{r.area}</Badge></td><td className="strong small">{r.voce}</td><td className="small diff-del" style={{ maxWidth: 260, whiteSpace: 'pre-wrap' }}>{String(r.prima)}</td><td className="small diff-add" style={{ maxWidth: 260, whiteSpace: 'pre-wrap' }}>{String(r.dopo)}</td></tr>)}</tbody></table></div>)}
+            </div>)}
         </Modal>
       )}
     </div>
