@@ -58,7 +58,7 @@ Accesso con Microsoft 365 (Entra ID): chi ha un account del tenant Toscana Diagn
 
 ## Deploy su Render (procedura)
 
-1. GitHub: crea il repository `tdroom/td-room-planning` (privato) e carica il contenuto di questa cartella (`git init && git add -A && git commit -m "Room Planning v1" && git branch -M main && git remote add origin … && git push -u origin main`).
+1. GitHub: crea il repository `tdroom/room` (privato) e carica il contenuto di questa cartella (`git init && git add -A && git commit -m "Room Planning v1" && git branch -M main && git remote add origin … && git push -u origin main`).
 2. Render: New > Blueprint > collega il repository. Il file render.yaml crea il database `td-room-db` (Basic 256 MB, Francoforte) e il servizio web `td-room` (Starter, Docker).
 3. Nel pannello del servizio, Environment: inserisci `SEED_SUPERADMIN_PASSWORD` (min 12 caratteri, password di emergenza del primo amministratore) e, appena disponibili, `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET`.
 4. Primo avvio: migrazioni, amministratore, importazione delle 7 sedi. L'app risponde su https://td-room.onrender.com (controlla `/api/health`).
