@@ -13,7 +13,7 @@ r.get('/status', ah(async (_req, res) => res.json(mailStatus())));
 r.post('/invia', ah(async (req, res) => {
   if (!canEdit(req.user)) throw forbidden('Profilo in sola consultazione');
   const d = parse(z.object({
-    kind: z.enum(['AGENDA_MEDICO', 'PROPOSTA', 'CALENDARIO_SEDE', 'LIBERA']),
+    kind: z.enum(['AGENDA_MEDICO', 'PIANO_DISPONIBILITA', 'PROPOSTA', 'CALENDARIO_SEDE', 'LIBERA']),
     to: z.array(z.string().email()).min(1).max(10),
     cc: z.array(z.string().email()).max(10).default([]),
     subject: z.string().min(3).max(200),

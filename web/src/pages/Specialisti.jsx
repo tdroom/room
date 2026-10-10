@@ -4,10 +4,14 @@ import { useAuth } from '../auth.jsx';
 import { useApi, Loading, ErrorBox, Modal, Badge, Field, useToast } from '../components/ui.jsx';
 import { durTxt } from '../planner/planner.jsx';
 import { buildNetwork, simulate, DAYS, DAYS_S, m2t } from '../lib/network.js';
-import { pdfAgendaSpecialista, pdfProposta, pdfBase64 } from '../lib/exports.js';
+import { pdfAgendaSpecialista, pdfProposta, pdfPianoDisponibilita, pdfBase64 } from '../lib/exports.js';
 
 const SEDE_COLORS = ['#1C505E', '#35768A', '#7A4E9E', '#2F8F5B', '#B7791F', '#B03A2E', '#4A6FA5', '#6B8E23'];
 const emptyWin = () => ({ 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] });
+const pianoOf = (net, x) => simulate(net, x.key, 'tutto', { minDur: 60 });
+const sediOf = (x) => [...new Set(x.sedi.map((z) => z.sede))];
+const pianoText = (x, p) => `Gentile ${x.nome},\n\nin allegato trovi il piano delle disponibilità nelle strutture del network Toscana Diagnostica, costruito in rapporto agli impegni che hai già in calendario con noi (${durTxt(x.ore)} a settimana${sediOf(x).length ? ', ' + sediOf(x).join(', ') : ''}).\n\nNella prima parte sono riepilogati i tuoi impegni attuali; nella seconda gli spazi ambulatoriali liberi e compatibili con la tua attività (${x.discipline.join(', ') || x.profili.join(', ')}) nelle nostre sedi, al di fuori delle fasce in cui sei già impegnato con noi: ${p.perSede.length ? p.perSede.map((q) => `${q.sede} (${durTxt(q.min)})`).join(', ') : 'al momento nessuno spazio libero compatibile'}.\n\nSe alcune di queste fasce fossero di tuo interesse per ampliare la collaborazione, rispondi a questa email indicando giorni e orari preferiti: definiremo insieme l'inserimento.\n\nCordiali saluti`;
+const PIANO_SUBJECT = 'Piano delle disponibilità nelle strutture Toscana Diagnostica';
 
 export default function Specialisti() {
   const { user } = useAuth();
@@ -21,9 +25,12 @@ export default function Specialisti() {
   const list = useMemo(() => (net ? net.specialisti.filter((x) => !x.attivita && (tipo === 'tutti' || x.tipo === tipo) && (!q || `${x.nome} ${x.discipline.join(' ')} ${x.profili.join(' ')}`.toLowerCase().includes(q.toLowerCase()))) : []), [net, q, tipo]);
   const x = sel && net ? net.byKey[sel] : null;
   const canEdit = user.role !== 'VIEWER';
+  const [bulk, setBulk] = useState(false);
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Specialisti del network</h1><div className="sub">Medici e professionisti sanitari su tutte le sedi: impegni settimanali unificati e simulatore di proposta per nuove collaborazioni.</div></div></div>
+      <div className="page-head"><div><h1>Specialisti del network</h1><div className="sub">Medici e professionisti sanitari su tutte le sedi: impegni settimanali unificati e simulatore di proposta per nuove collaborazioni.</div></div>
+        {canEdit && net && <button className="btn ghost" onClick={() => setBulk(true)}>Invio massivo del piano disponibilità…</button>}</div>
+      {bulk && net && <BulkModal net={net} list={net.specialisti.filter((x) => !x.attivita)} onClose={() => setBulk(false)} toast={toast} />}
       <ErrorBox error={error} />
       {!net ? <Loading /> : (
         <div className="spec-layout">
@@ -85,7 +92,9 @@ function Dettaglio({ x, net, colorOf, canEdit, toast, reload }) {
           </div>
           <div className="row">
             <button className="btn ghost sm" onClick={() => { const { doc, filename } = pdfAgendaSpecialista(x); doc.save(filename); }}>Scarica PDF agenda</button>
-            {canEdit && <button className="btn sm" onClick={() => setMail({ kind: 'agenda' })}>Invia agenda al medico</button>}
+            {canEdit && <button className="btn sm ghost" onClick={() => setMail({ kind: 'agenda' })}>Invia agenda al medico</button>}
+            <button className="btn ghost sm" onClick={() => { const p = pianoOf(net, x); const { doc, filename } = pdfPianoDisponibilita(x, p, pianoText(x, p)); doc.save(filename); }}>Scarica PDF piano disponibilità</button>
+            {canEdit && <button className="btn sm" onClick={() => setMail({ kind: 'piano', sim: pianoOf(net, x) })}>Invia al medico il piano delle disponibilità</button>}
           </div>
         </div>
         {canEdit && <div className="row" style={{ marginTop: 10 }}><Field label="Email dello specialista (per gli invii)"><div className="row"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nome@esempio.it" style={{ width: 280 }} />{email !== (x.email || '') && <button className="btn sm ghost" onClick={saveEmail}>Salva</button>}</div></Field></div>}
@@ -141,7 +150,7 @@ function Dettaglio({ x, net, colorOf, canEdit, toast, reload }) {
             </table></div>
           </div>)}
       </div></div>
-      {mail && <MailModal x={x} kind={mail.kind} email={email} onClose={() => setMail(null)} build={() => (mail.kind === 'agenda' ? pdfAgendaSpecialista(x) : pdfProposta(x, sim, win, introText(x, sim)))} defaults={mail.kind === 'agenda' ? { subject: `La tua agenda settimanale nelle sedi Toscana Diagnostica`, body: `Gentile ${x.nome},\n\nin allegato trovi il riepilogo della tua programmazione settimanale nelle sedi del network Toscana Diagnostica (${durTxt(x.ore)} a settimana, ${sedeList.join(', ')}).\n\nPer qualsiasi variazione di disponibilità rispondi a questa email.\n\nCordiali saluti` } : { subject: `Proposta di collaborazione nelle sedi Toscana Diagnostica`, body: introText(x, sim) }} toast={toast} />}
+      {mail && <MailModal x={x} kind={mail.kind} email={email} onClose={() => setMail(null)} build={() => (mail.kind === 'agenda' ? pdfAgendaSpecialista(x) : mail.kind === 'piano' ? pdfPianoDisponibilita(x, mail.sim, pianoText(x, mail.sim)) : pdfProposta(x, sim, win, introText(x, sim)))} defaults={mail.kind === 'piano' ? { subject: PIANO_SUBJECT, body: pianoText(x, mail.sim) } : mail.kind === 'agenda' ? { subject: `La tua agenda settimanale nelle sedi Toscana Diagnostica`, body: `Gentile ${x.nome},\n\nin allegato trovi il riepilogo della tua programmazione settimanale nelle sedi del network Toscana Diagnostica (${durTxt(x.ore)} a settimana, ${sedeList.join(', ')}).\n\nPer qualsiasi variazione di disponibilità rispondi a questa email.\n\nCordiali saluti` } : { subject: `Proposta di collaborazione nelle sedi Toscana Diagnostica`, body: introText(x, sim) }} toast={toast} />}
     </div>
   );
 }
@@ -162,20 +171,57 @@ function MailModal({ x, kind, email, onClose, build, defaults, toast }) {
     setBusy(true);
     try {
       const { doc, filename } = build();
-      const r = await api.post('/comms/invia', { kind: kind === 'agenda' ? 'AGENDA_MEDICO' : 'PROPOSTA', to: to.split(/[;,]/).map((s) => s.trim()).filter(Boolean), subject, body, attachment: { filename, base64: pdfBase64(doc) } });
+      const r = await api.post('/comms/invia', { kind: kind === 'agenda' ? 'AGENDA_MEDICO' : kind === 'piano' ? 'PIANO_DISPONIBILITA' : 'PROPOSTA', to: to.split(/[;,]/).map((s) => s.trim()).filter(Boolean), subject, body, attachment: { filename, base64: pdfBase64(doc) } });
       if (r.status === 'INVIATA') { toast('Email inviata'); onClose(); } else toast(r.status === 'NON_CONFIGURATA' ? 'Invio email non configurato: la comunicazione è stata registrata ma non spedita' : `Invio non riuscito: ${r.error}`, 'err');
     } catch (e) { toast(e.message, 'err'); }
     setBusy(false);
   };
   return (
-    <Modal title={kind === 'agenda' ? `Invia l'agenda a ${x.nome}` : `Invia la proposta a ${x.nome}`} onClose={onClose} wide footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy || !to} onClick={send}>{busy ? 'Invio…' : 'Invia con allegato PDF'}</button></>}>
+    <Modal title={kind === 'agenda' ? `Invia l'agenda a ${x.nome}` : kind === 'piano' ? `Invia il piano delle disponibilità a ${x.nome}` : `Invia la proposta a ${x.nome}`} onClose={onClose} wide footer={<><button className="btn ghost" onClick={onClose}>Annulla</button><button className="btn" disabled={busy || !to} onClick={send}>{busy ? 'Invio…' : 'Invia con allegato PDF'}</button></>}>
       {status && !status.configured && <div className="alert err" style={{ marginBottom: 10 }}>L'invio email non è ancora configurato (GRAPH_SENDER e permesso Mail.Send su Entra): il messaggio verrà solo registrato. Puoi comunque scaricare il PDF e inviarlo a mano.</div>}
-      {status?.configured && <div className="small muted" style={{ marginBottom: 10 }}>Mittente: {status.from} (Microsoft 365)</div>}
+      {status?.configured && <div className="small muted" style={{ marginBottom: 10 }}>Mittente: {status.from} (Microsoft 365). Nessuna email parte senza il pulsante Invia.</div>}
       <div className="form-grid">
         <Field label="Destinatario"><input type="text" value={to} onChange={(e) => setTo(e.target.value)} placeholder="email del medico (più indirizzi separati da virgola)" /></Field>
         <Field label="Oggetto"><input value={subject} onChange={(e) => setSubject(e.target.value)} /></Field>
       </div>
       <Field label="Testo"><textarea rows={10} value={body} onChange={(e) => setBody(e.target.value)} /></Field>
+    </Modal>
+  );
+}
+
+function BulkModal({ net, list, onClose, toast }) {
+  const withMail = list.filter((x) => x.email);
+  const [chosen, setChosen] = useState(() => new Set(withMail.map((x) => x.key)));
+  const [subject, setSubject] = useState(PIANO_SUBJECT);
+  const [status, setStatus] = useState(null);
+  const [prog, setProg] = useState(null); // {done, tot, ok, ko, log:[]}
+  const [confirm, setConfirm] = useState('');
+  useEffect(() => { api.get('/comms/status', { silent: true }).then(setStatus).catch(() => {}); }, []);
+  const toggle = (k) => setChosen((c) => { const n = new Set(c); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const run = async () => {
+    const targets = withMail.filter((x) => chosen.has(x.key));
+    const p = { done: 0, tot: targets.length, ok: 0, ko: 0, log: [] }; setProg({ ...p });
+    for (const x of targets) {
+      try {
+        const sim = pianoOf(net, x); const { doc, filename } = pdfPianoDisponibilita(x, sim, pianoText(x, sim));
+        const r = await api.post('/comms/invia', { kind: 'PIANO_DISPONIBILITA', to: [x.email], subject, body: pianoText(x, sim), attachment: { filename, base64: pdfBase64(doc) } });
+        if (r.status === 'INVIATA') p.ok++; else { p.ko++; p.log.push(`${x.nome}: ${r.status === 'NON_CONFIGURATA' ? 'invio non configurato (registrata)' : r.error || r.status}`); }
+      } catch (e) { p.ko++; p.log.push(`${x.nome}: ${e.message}`); }
+      p.done++; setProg({ ...p });
+    }
+    toast(p.ko ? `Inviate ${p.ok}, non riuscite ${p.ko}` : `Inviate ${p.ok} email`, p.ko ? 'err' : undefined);
+  };
+  const n = withMail.filter((x) => chosen.has(x.key)).length;
+  return (
+    <Modal title="Invio massivo del piano delle disponibilità" onClose={onClose} wide footer={<><button className="btn ghost" onClick={onClose}>{prog && prog.done === prog.tot ? 'Chiudi' : 'Annulla'}</button><button className="btn" disabled={!n || confirm !== 'INVIA' || (prog && prog.done < prog.tot)} onClick={run}>{prog ? `${prog.done}/${prog.tot}` : `Invia ${n} email`}</button></>}>
+      {status && !status.configured && <div className="alert err" style={{ marginBottom: 10 }}>L'invio email non è configurato (GRAPH_SENDER e permesso Mail.Send): i messaggi verrebbero solo registrati, non spediti.</div>}
+      <p className="small muted" style={{ marginTop: 0 }}>Ogni specialista selezionato riceve una email personale con in allegato il proprio PDF: impegni già in calendario con noi e spazi liberi compatibili nelle nostre strutture. Nulla parte finché non confermi qui sotto. Specialisti senza email: {list.length - withMail.length} (si inseriscono dalla scheda dello specialista).</p>
+      <Field label="Oggetto"><input value={subject} onChange={(e) => setSubject(e.target.value)} /></Field>
+      <div className="row" style={{ margin: '8px 0' }}><button className="btn sm ghost" onClick={() => setChosen(new Set(withMail.map((x) => x.key)))}>Seleziona tutti</button><button className="btn sm ghost" onClick={() => setChosen(new Set())}>Nessuno</button><span className="small muted">{n} selezionati su {withMail.length} con email</span></div>
+      <div className="table-wrap" style={{ maxHeight: 300, overflow: 'auto' }}><table className="t"><thead><tr><th /><th>Specialista</th><th>Attività</th><th>Email</th><th className="num">Ore/sett.</th></tr></thead>
+        <tbody>{withMail.map((x) => <tr key={x.key}><td><input type="checkbox" checked={chosen.has(x.key)} onChange={() => toggle(x.key)} /></td><td className="strong">{x.nome}</td><td className="small">{x.discipline.join(', ') || x.profili.join(', ')}</td><td className="small">{x.email}</td><td className="num">{durTxt(x.ore)}</td></tr>)}</tbody></table></div>
+      {prog && <div className="alert info" style={{ marginTop: 10 }}>Inviate {prog.ok} · non riuscite {prog.ko} · {prog.done}/{prog.tot}{prog.log.length ? <ul>{prog.log.map((l, i) => <li key={i}>{l}</li>)}</ul> : null}</div>}
+      {!prog && <Field label={`Per confermare l'invio a ${n} specialisti scrivi INVIA`}><input value={confirm} onChange={(e) => setConfirm(e.target.value.toUpperCase())} style={{ width: 160 }} /></Field>}
     </Modal>
   );
 }

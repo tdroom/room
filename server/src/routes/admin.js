@@ -91,7 +91,7 @@ r.get('/settings', ah(async (_req, res) => {
   const s = Object.fromEntries(rows.map((x) => [x.key, x.value]));
   let brand = null; try { brand = s.brand ? JSON.parse(s.brand) : null; } catch { brand = null; }
   res.json({ brand, entraEnabled: config.entra.enabled, autoProvisionRole: config.entra.autoProvisionRole, allowedDomains: config.entra.allowedDomains, mail: mailStatus(),
-    crit_soglia: s.crit_soglia || '5', crit_alert_enabled: s.crit_alert_enabled || 'true', crit_alert_hour: s.crit_alert_hour || '8', crit_alert_last_run: s.crit_alert_last_run || '' });
+    crit_soglia: s.crit_soglia || '5', crit_alert_enabled: s.crit_alert_enabled || 'false', crit_alert_hour: s.crit_alert_hour || '8', crit_alert_last_run: s.crit_alert_last_run || '' });
 }));
 
 r.put('/settings', requireRole('ADMIN'), ah(async (req, res) => {

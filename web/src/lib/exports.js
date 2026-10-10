@@ -42,6 +42,19 @@ export function pdfProposta(x, sim, windows, intro) {
   return { doc, filename: `Proposta_${safe(x.nome)}.pdf` };
 }
 
+export function pdfPianoDisponibilita(x, sim, intro) {
+  const doc = mkDoc(`Piano delle disponibilità nelle nostre strutture · ${x.nome}`, `${x.discipline.join(', ') || x.profili.join(', ')} · impegni attuali e spazi liberi compatibili nelle sedi Toscana Diagnostica`);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
+  const lines = doc.splitTextToSize(intro, 270); doc.text(lines, 12, 30);
+  let y = 30 + lines.length * 4.5 + 4;
+  y = section(doc, `Impegni già in calendario con noi (${durTxt(x.ore)}/settimana)`, y);
+  const imp = x.sessioni.filter((q) => q.room).map((q) => [DAYS[q.d], `${m2t(q.s)}–${m2t(q.e)}`, q.sede, q.room, q.ruolo === 'titolare' ? (q.disciplina || '') : q.ruolo]);
+  y = table(doc, ['Giorno', 'Orario', 'Sede', 'Ambulatorio', 'Attività'], imp.length ? imp : [['—', '', 'Nessuna sessione pianificata', '', '']], y) + 8;
+  y = section(doc, `Disponibilità nelle nostre strutture (${durTxt(sim.totale)} complessive, fuori dai tuoi impegni)`, y);
+  table(doc, ['Sede', 'Indirizzo', 'Giorno', 'Orario', 'Durata', 'Ambulatorio', 'Dedicato a', 'Attrezzature'], sim.proposte.length ? sim.proposte.map((p) => [p.sede, p.indirizzo || '', DAYS[p.d], `${m2t(p.s)}–${m2t(p.e)}`, durTxt(p.min), p.room, p.dedicato, p.attrezzature.join(', ')]) : [['—', '', '', 'Nessuno spazio libero compatibile', '', '', '', '']], y);
+  return { doc, filename: `Piano_disponibilita_${safe(x.nome)}.pdf` };
+}
+
 export function pdfCalendario(week, label) {
   const doc = mkDoc(`Calendario · ${label}`, `settimana dal ${itDate(week.mondayISO)} al ${itDate(week.sundayISO)}`);
   let y = 28;

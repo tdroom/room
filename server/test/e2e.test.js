@@ -61,6 +61,11 @@ test('comunicazioni: registro invii anche senza email configurata', async () => 
   assert.equal(r.status, 200); assert.ok(['INVIATA', 'NON_CONFIGURATA', 'FALLITA'].includes(r.data.status));
   const log = await call('GET', '/comms/log'); assert.ok(log.data.some((x) => x.subject === 'Prova'));
 });
+test('comunicazioni: piano disponibilità con allegato', async () => {
+  const r = await call('POST', '/comms/invia', { kind: 'PIANO_DISPONIBILITA', to: ['test@esempio.it'], subject: 'Piano', body: 'Testo', attachment: { filename: 'Piano.pdf', base64: Buffer.from('%PDF-1.4 test').toString('base64') } });
+  assert.equal(r.status, 200, JSON.stringify(r.data)); assert.ok(['INVIATA', 'NON_CONFIGURATA', 'FALLITA'].includes(r.data.status));
+  const log = await call('GET', '/comms/log'); assert.ok(log.data.some((x) => x.kind === 'PIANO_DISPONIBILITA' && x.attachment_name === 'Piano.pdf'));
+});
 test('criticità e soglia', async () => {
   const r = await call('GET', '/criticita'); assert.equal(r.status, 200); assert.ok(r.data.sedi.length >= 7); assert.ok(r.data.soglia > 0);
   assert.equal((await call('PUT', '/settings', { crit_soglia: '8' })).status, 200);

@@ -41,4 +41,4 @@ CREATE TABLE email_log (
 );
 CREATE INDEX email_log_at ON email_log (at DESC);
 
-INSERT INTO app_settings (key, value) VALUES ('crit_soglia', '5'), ('crit_alert_enabled', 'true'), ('crit_alert_hour', '8') ON CONFLICT DO NOTHING;
+INSERT INTO app_settings (key, value) VALUES ('crit_soglia', '5'), ('crit_alert_enabled', 'false'), ('crit_alert_hour', '8') ON CONFLICT DO NOTHING;

@@ -18,7 +18,7 @@ export async function criticita() {
 
 // Avviso giornaliero: una volta al giorno all'ora impostata, email agli amministratori (e alla sede) per le sedi sopra soglia
 export async function runDailyAlert({ force = false } = {}) {
-  const enabled = (await getSetting('crit_alert_enabled', 'true')) === 'true';
+  const enabled = (await getSetting('crit_alert_enabled', 'false')) === 'true';
   const hour = Number(await getSetting('crit_alert_hour', '8'));
   const today = todayRome();
   const nowHour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Rome', hour: '2-digit', hour12: false }).format(new Date()));

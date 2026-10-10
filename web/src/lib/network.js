@@ -58,7 +58,7 @@ export function simulate(net, key, windows, opts = {}) {
       const dOK = !disc.length || !r.discipline.length || isPrelievi(r) || disc.some((q) => r.discipline.includes(q));
       if (!dOK && roomExclusive(r)) continue;
       for (let d = 0; d < 7; d++) {
-        const win = rangesM(windows[d]); if (!win.length) continue;
+        const win = windows === 'tutto' ? [[0, 1440]] : rangesM(windows[d]); if (!win.length) continue;
         const free = plan.free.filter((f) => f.roomId === r.id && f.d === d).map((f) => [f.s, f.e]);
         let cand = [];
         for (const w of win) for (const f of free) { const a = Math.max(w[0], f[0]), b = Math.min(w[1], f[1]); if (b - a >= minDur) cand.push([a, b]); }
