@@ -43,7 +43,7 @@ services:
       - key: ENTRA_ALLOWED_DOMAINS
         value: toscanadiagnostica.it
       - key: GRAPH_SENDER
-        value: amministrazione@toscanadiagnostica.it   # casella mittente di agende, proposte e avvisi (Microsoft Graph, permesso Mail.Send)
+        value: backoffice@toscanadiagnostica.it   # casella mittente di agende, proposte e avvisi (Microsoft Graph, permesso Mail.Send)
 databases:
   - name: td-room-db
     plan: basic-256mb
