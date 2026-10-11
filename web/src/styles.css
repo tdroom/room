@@ -353,3 +353,7 @@ th.sortable:hover { color: var(--teal); }
 .day-blk.sostituita { border-left-color: #7A4E9E; background: var(--mauve-100); }
 .day-blk.extra { border-left-color: var(--green); background: var(--green-100); }
 .day-blk.chiusa { border-left-color: #999; background: #eee; color: #777; text-decoration: line-through; }
+/* piè di card dentro una card "flush" (tabella + barra azioni): ripristina il respiro */
+.card > .bd.flush > .bd { padding: 12px 18px; }
+.card > .bd.flush > .table-wrap + .bd, .card > .bd.flush > .bd + .table-wrap { border-top: 1px solid var(--line); }
+.card > .bd.flush > .empty { padding: 18px; }
