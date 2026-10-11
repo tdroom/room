@@ -61,14 +61,14 @@ Accesso con Microsoft 365 (Entra ID): chi ha un account del tenant Toscana Diagn
 1. GitHub: crea il repository `tdroom/room` (privato) e carica il contenuto di questa cartella (`git init && git add -A && git commit -m "Room Planning v1" && git branch -M main && git remote add origin … && git push -u origin main`).
 2. Render: New > Blueprint > collega il repository. Il file render.yaml crea il database `td-room-db` (Basic 256 MB, Francoforte) e il servizio web `td-room` (Starter, Docker).
 3. Nel pannello del servizio, Environment: inserisci `SEED_SUPERADMIN_PASSWORD` (min 12 caratteri, password di emergenza del primo amministratore) e, appena disponibili, `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET`.
-4. Primo avvio: migrazioni, amministratore, importazione delle 7 sedi. L'app risponde su https://td-room.onrender.com (controlla `/api/health`).
-5. Dominio ufficiale (es. room.toscanadiagnostica.it): Settings > Custom Domains su Render, record CNAME sul DNS, poi aggiorna `BASE_URL` in render.yaml (o nel pannello) e il redirect URI in Entra. Da quel momento ogni altro host viene reindirizzato al dominio ufficiale.
+4. Primo avvio: migrazioni, amministratore, importazione delle 7 sedi. Controllo rapido: `https://planning.toscanadiagnostica.it/api/health` (o l'indirizzo onrender finché il DNS non è attivo).
+5. Dominio ufficiale **planning.toscanadiagnostica.it**: su Render, servizio td-room > Settings > Custom Domains > Add `planning.toscanadiagnostica.it`; sul DNS di toscanadiagnostica.it un record CNAME `planning` → `td-room.onrender.com` (TTL breve); Render verifica e rilascia il certificato HTTPS da solo. `BASE_URL` è già impostato al dominio ufficiale: ogni richiesta arrivata su td-room.onrender.com viene reindirizzata a planning.toscanadiagnostica.it (per questo, finché il DNS non è attivo, impostare temporaneamente `BASE_URL=https://td-room.onrender.com` nel pannello o `CANONICAL_REDIRECT=false`).
 
 Costi indicativi: Starter ~7 $/mese + database Basic ~6 $/mese (verificare i listini). Il piano free fa dormire l'app e cancella il database dopo 30 giorni: solo per prove.
 
 ## Microsoft 365: registrazione app in Entra ID
 
-1. Microsoft Entra ID > App registrations > New registration: nome "TD Room Planning", single tenant, piattaforma Web, redirect URI `https://td-room.onrender.com/api/auth/entra/callback` (aggiungere poi quello del dominio ufficiale).
+1. Microsoft Entra ID > App registrations > New registration: nome "TD Room Planning", single tenant, piattaforma Web, redirect URI `https://planning.toscanadiagnostica.it/api/auth/entra/callback` (aggiungere anche `https://td-room.onrender.com/api/auth/entra/callback` se si usa l'indirizzo provvisorio).
 2. Certificates & secrets > New client secret (24 mesi): copiare subito il valore.
 3. Token configuration > Add optional claim > ID token > `email`.
 4. Overview: Directory (tenant) ID e Application (client) ID → variabili `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` su Render. Riavviare.

@@ -13,7 +13,7 @@ services:
       - key: PORT
         value: "3000"
       - key: BASE_URL
-        value: https://td-room.onrender.com   # quando il dominio ufficiale (es. room.toscanadiagnostica.it) sarà attivo, aggiornare qui
+        value: https://planning.toscanadiagnostica.it   # dominio ufficiale; finché il DNS non è attivo, impostare temporaneamente https://td-room.onrender.com nel pannello Render
       - key: DATABASE_URL
         fromDatabase:
           name: td-room-db
