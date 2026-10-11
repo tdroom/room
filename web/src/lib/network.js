@@ -11,7 +11,9 @@ export const isAttivita = (p) => ATTIVITA.test((p.nome || '').trim());
 
 // Costruisce la rete: piani per sede e indice degli specialisti (medici e professionisti sanitari)
 export function buildNetwork(strutture) {
-  const sedi = strutture.map((s) => { let plan = null; try { plan = computePlan(s); } catch { plan = null; } return { s, plan, label: sedeLabel(s) }; });
+  const dup = {}; strutture.forEach((s) => { dup[s.denominazione] = (dup[s.denominazione] || 0) + 1; });
+  const labelOf = (s) => (s.nomeSede || dup[s.denominazione] < 2 || !s.indirizzo ? sedeLabel(s) : `${s.denominazione} · ${String(s.indirizzo).split(',')[0].trim()}`);
+  const sedi = strutture.map((s) => { let plan = null; try { plan = computePlan(s); } catch { plan = null; } return { s, plan, label: labelOf(s) }; });
   const spec = new Map();
   for (const { s, plan, label } of sedi) {
     for (const p of s.personale) {

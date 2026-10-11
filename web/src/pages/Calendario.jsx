@@ -12,7 +12,11 @@ export default function Calendario() {
   const { user } = useAuth();
   const toast = useToast();
   const today = isoDate(new Date());
-  const [monday, setMonday] = useState(mondayOf(today));
+  const [view, setView] = useState('settimana');
+  const [day, setDay] = useState(today);
+  const [monday, setMondayRaw] = useState(mondayOf(today));
+  const setMonday = (m) => { setMondayRaw(m); setDay((d) => (mondayOf(d) === m ? d : m)); };
+  const goDay = (d) => { setDay(d); setMondayRaw(mondayOf(d)); };
   const [sedeId, setSedeId] = useState('');
   const [key, setKey] = useState('');
   const [modal, setModal] = useState(null); // {evento} per modifica/creazione, oppure {sess} per dettaglio
@@ -30,25 +34,35 @@ export default function Calendario() {
       <div className="page-head">
         <div><h1>Calendario</h1><div className="sub">La settimana-tipo applicata alle date reali: assenze, sostituzioni, chiusure e sessioni extra. È il controllo operativo di ciò che accade davvero in ogni sede.</div></div>
         <div className="row">
-          {week && <button className="btn ghost" onClick={() => { const { doc, filename } = pdfCalendario(week, label); doc.save(filename); }}>Scarica PDF settimana</button>}
+          {week && (view === 'giorno' ? <button className="btn ghost" onClick={() => { const g = week.giorni.find((x) => x.iso === day); const { doc } = pdfCalendario({ ...week, giorni: g ? [g] : [], mondayISO: day, sundayISO: day }, label); doc.save(`Calendario_${day}_${label.replace(/[^\w]+/g, '_')}.pdf`); }}>Scarica PDF giornata</button>
+            : <button className="btn ghost" onClick={() => { const { doc, filename } = pdfCalendario(week, label); doc.save(filename); }}>Scarica PDF settimana</button>)}
           {canEdit && <button className="btn" onClick={() => setModal({ evento: { kind: 'ASSENZA', dal: monday, al: monday } })}>+ Assenza / chiusura / extra</button>}
         </div>
       </div>
       <ErrorBox error={strutture.error || ev.error} />
       <div className="card" style={{ marginBottom: 14 }}><div className="bd row">
-        <button className="btn sm ghost" onClick={() => setMonday(addDays(monday, -7))}>‹ settimana</button>
-        <input type="date" value={monday} onChange={(e) => e.target.value && setMonday(mondayOf(e.target.value))} style={{ width: 'auto' }} />
-        <button className="btn sm ghost" onClick={() => setMonday(addDays(monday, 7))}>settimana ›</button>
-        <button className="btn sm ghost" onClick={() => setMonday(mondayOf(today))}>Oggi</button>
-        <b style={{ marginLeft: 8 }}>{itDate(monday)} – {itDate(addDays(monday, 6))}</b>
+        <div className="seg">{[['settimana', 'Settimana'], ['giorno', 'Giorno']].map(([k, l]) => <button key={k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>)}</div>
+        {view === 'giorno' ? <>
+          <button className="btn sm ghost" onClick={() => goDay(addDays(day, -1))}>‹ giorno</button>
+          <input type="date" value={day} onChange={(e) => e.target.value && goDay(e.target.value)} style={{ width: 'auto' }} />
+          <button className="btn sm ghost" onClick={() => goDay(addDays(day, 1))}>giorno ›</button>
+          <button className="btn sm ghost" onClick={() => goDay(today)}>Oggi</button>
+          <b style={{ marginLeft: 8 }}>{DAYS[(new Date(day + 'T12:00:00Z').getUTCDay() + 6) % 7]} {itDate(day)}</b>
+        </> : <>
+          <button className="btn sm ghost" onClick={() => setMonday(addDays(monday, -7))}>‹ settimana</button>
+          <input type="date" value={monday} onChange={(e) => e.target.value && setMonday(mondayOf(e.target.value))} style={{ width: 'auto' }} />
+          <button className="btn sm ghost" onClick={() => setMonday(addDays(monday, 7))}>settimana ›</button>
+          <button className="btn sm ghost" onClick={() => setMonday(mondayOf(today))}>Oggi</button>
+          <b style={{ marginLeft: 8 }}>{itDate(monday)} – {itDate(addDays(monday, 6))}</b>
+        </>}
         <span className="spacer" />
         <select value={sedeId} onChange={(e) => setSedeId(e.target.value)} style={{ width: 'auto', minWidth: 200 }}><option value="">Tutte le sedi</option>{(strutture.data || []).map((s) => <option key={s.id} value={s.id}>{sedeLabel(s)}</option>)}</select>
         <select value={key} onChange={(e) => setKey(e.target.value)} style={{ width: 'auto', minWidth: 200 }}><option value="">Tutti gli specialisti</option>{(net?.specialisti || []).filter((x) => !x.attivita).map((x) => <option key={x.key} value={x.key}>{x.nome}</option>)}</select>
       </div></div>
-      {!week ? <Loading /> : (
+      {!week ? <Loading /> : view === 'giorno' ? <DayView g={week.giorni.find((x) => x.iso === day)} sedeId={sedeId} canEdit={canEdit} onSess={(q) => setModal({ sess: q })} onChiusura={(c) => canEdit && setModal({ evento: c.evento })} onDay={(iso) => goDay(iso)} /> : (
         <div className="cal-grid">{week.giorni.map((g) => (
           <div key={g.iso} className={`cal-day ${g.iso === today ? 'today' : ''}`}>
-            <div className="agenda-day">{DAYS_S[g.d]} {itDate(g.iso).slice(0, 5)}</div>
+            <div className="agenda-day" style={{ cursor: 'pointer' }} title="Apri la giornata" onClick={() => { goDay(g.iso); setView('giorno'); }}>{DAYS_S[g.d]} {itDate(g.iso).slice(0, 5)}</div>
             {g.chiusure.map((c, i) => <div key={i} className="cal-blk chiusa" style={{ textDecoration: 'none' }} onClick={() => canEdit && setModal({ evento: c.evento })}><b>{c.sede}</b> chiusa{c.evento.nota ? `: ${c.evento.nota}` : ''}</div>)}
             {g.sessioni.map((q, i) => (
               <div key={i} className={`cal-blk ${q.stato}`} onClick={() => setModal({ sess: q })}>
@@ -75,6 +89,45 @@ export default function Calendario() {
       {modal?.sess && <SessModal sess={modal.sess} net={net} canEdit={canEdit} onClose={() => setModal(null)} onAssenza={() => setModal({ evento: { kind: 'ASSENZA', persona_key: modal.sess.key, persona_nome: modal.sess.nome, persona_id: modal.sess.medId, sede_id: '', dal: modal.sess.iso, al: modal.sess.iso }, sess: modal.sess, from: 'sess' })} />}
       {modal?.evento && <EventoModal evento={modal.evento} sess={modal.sess} net={net} strutture={strutture.data || []} onClose={() => setModal(null)} onSaved={() => { setModal(null); ev.reload(); }} toast={toast} />}
     </div>
+  );
+}
+
+// Vista giornaliera: timeline per sede e ambulatorio, con le sessioni posizionate sull'asse delle ore
+function DayView({ g, sedeId, onSess, onChiusura }) {
+  if (!g) return <div className="card"><div className="bd empty">Giornata fuori dall'intervallo caricato</div></div>;
+  const all = g.sessioni;
+  if (!all.length && !g.chiusure.length) return <div className="card"><div className="bd empty">Nessuna sessione pianificata in questa giornata</div></div>;
+  const start = Math.min(7 * 60, ...all.map((q) => q.s)); const end = Math.max(20 * 60, ...all.map((q) => q.e));
+  const startH = Math.floor(start / 60), endH = Math.ceil(end / 60); const span = (endH - startH) * 60;
+  const pct = (m) => `${((m - startH * 60) / span) * 100}%`;
+  const hours = Array.from({ length: endH - startH + 1 }, (_, i) => startH + i);
+  const sedi = [...new Map(all.map((q) => [q.sedeId, q.sede])).entries()];
+  g.chiusure.forEach((c) => { if (!sedi.some(([id]) => id === c.sedeId)) sedi.push([c.sedeId, c.sede]); });
+  sedi.sort((a, b) => a[1].localeCompare(b[1], 'it'));
+  const tot = all.filter((q) => q.stato !== 'chiusa' && q.stato !== 'assente').reduce((a, q) => a + (q.e - q.s), 0);
+  return (
+    <div className="card"><div className="bd" style={{ overflowX: 'auto' }}>
+      <div className="row small muted" style={{ marginBottom: 8 }}><span><b>{all.length}</b> sessioni · {Math.floor(tot / 60)}h{tot % 60 ? String(tot % 60).padStart(2, '0') : ''} effettive · {sedi.length} {sedi.length === 1 ? 'sede' : 'sedi'}</span><span className="spacer" /><span className="chip" style={{ background: '#fff', borderLeft: '4px solid var(--teal)' }}>regolare</span><span className="chip" style={{ background: 'var(--mauve-100)', borderLeft: '4px solid #7A4E9E' }}>sostituzione</span><span className="chip" style={{ background: 'var(--red-100)', borderLeft: '4px solid var(--red)' }}>assente</span><span className="chip" style={{ background: 'var(--green-100)', borderLeft: '4px solid var(--green)' }}>extra</span></div>
+      <div className="day-tl" style={{ minWidth: 760 }}>
+        <div className="day-row head"><div className="day-lbl" /><div className="day-track">{hours.map((h) => <span key={h} className="day-h" style={{ left: pct(h * 60) }}>{String(h).padStart(2, '0')}</span>)}</div></div>
+        {sedi.map(([sid, sede]) => {
+          const chiusa = g.chiusure.find((c) => c.sedeId === sid);
+          const rooms = [...new Map(all.filter((q) => q.sedeId === sid).map((q) => [q.roomId, q.room])).entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'it', { numeric: true }));
+          return <React.Fragment key={sid}>
+            {!sedeId && <div className="day-sede">{sede}{chiusa && <span className="chip" style={{ background: '#eee', color: '#777', marginLeft: 8, cursor: 'pointer' }} onClick={() => onChiusura(chiusa)}>sede chiusa{chiusa.evento.nota ? `: ${chiusa.evento.nota}` : ''}</span>}</div>}
+            {sedeId && chiusa && <div className="day-sede"><span className="chip" style={{ background: '#eee', color: '#777', cursor: 'pointer' }} onClick={() => onChiusura(chiusa)}>sede chiusa{chiusa.evento.nota ? `: ${chiusa.evento.nota}` : ''}</span></div>}
+            {rooms.map(([rid, room]) => (
+              <div key={rid} className="day-row"><div className="day-lbl" title={room}>{room}</div>
+                <div className="day-track">{hours.map((h) => <i key={h} className="day-grid" style={{ left: pct(h * 60) }} />)}
+                  {all.filter((q) => q.sedeId === sid && q.roomId === rid).map((q, i) => (
+                    <div key={i} className={`day-blk ${q.stato}`} style={{ left: pct(q.s), width: `calc(${((q.e - q.s) / span) * 100}% - 2px)` }} title={`${m2t(q.s)}–${m2t(q.e)} ${q.nome}${q.disciplina ? ' · ' + q.disciplina : ''}${q.san ? ' · supporto ' + q.san : ''}`} onClick={() => onSess(q)}>
+                      <b>{m2t(q.s)}–{m2t(q.e)}</b> {q.stato === 'sostituita' ? <><s>{q.nome}</s> → {q.sostituto}</> : q.nome}{q.stato === 'assente' ? ' · ASSENTE' : ''}{q.stato === 'extra' ? ' · extra' : ''}{q.disciplina ? <span className="muted"> · {q.disciplina}</span> : null}{q.san ? <span className="muted"> · con {q.san}</span> : null}
+                    </div>))}
+                </div></div>))}
+          </React.Fragment>;
+        })}
+      </div>
+    </div></div>
   );
 }
 
