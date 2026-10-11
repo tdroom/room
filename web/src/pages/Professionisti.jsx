@@ -19,12 +19,15 @@ export default function Professionisti() {
   const [q, setQ] = useState(''); const [tipo, setTipo] = useState('tutti'); const [soloAttivi, setSoloAttivi] = useState(true);
   const [sel, setSel] = useState(null); const [nuovo, setNuovo] = useState(false);
   const list = useMemo(() => (data || []).filter((p) => (!soloAttivi || p.attivo) && (tipo === 'tutti' || p.tipo === tipo) && (!q || `${p.nome} ${p.profilo || ''} ${p.email || ''}`.toLowerCase().includes(q.toLowerCase()))), [data, q, tipo, soloAttivi]);
-  const importa = async () => { try { const r = await api.post('/personale/professionisti/importa-da-sedi'); toast(r.created ? `Importati ${r.created} professionisti sanitari dalle schede di sede` : 'Nessun nuovo professionista sanitario da importare'); reload(); } catch (e) { toast(e.message, 'err'); } };
+  const importa = async () => {
+    if (!window.confirm('Riallineare l\'elenco con le schede di sede? Vengono aggiunti i sanitari mancanti, riattivati quelli tornati, ed eliminati (o disattivati, se hanno turni/presenze/rendiconti/documenti) i medici importati in passato e chi non è più in nessuna sede.')) return;
+    try { const r = await api.post('/personale/professionisti/importa-da-sedi'); toast(`Elenco riallineato: ${r.created} aggiunti, ${r.riattivati} riattivati, ${r.eliminati} eliminati, ${r.disattivati} disattivati · ${r.totale} sanitari nelle sedi`); setSel(null); reload(); } catch (e) { toast(e.message, 'err'); }
+  };
   const scad = (p) => p.prossimaScadenza && p.prossimaScadenza < new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
   return (
     <div className="page">
       <div className="page-head"><div><h1>Professionisti</h1><div className="sub">Anagrafica completa di medici e professionisti sanitari: dati, contratto, compenso, documenti, accesso al portale e disponibilità.</div></div>
-        <div className="row"><button className="btn ghost" onClick={importa} title="Importa infermieri, tecnici, ostetriche e gli altri sanitari censiti nelle sedi (non i medici)">Importa i sanitari dalle sedi</button><button className="btn" onClick={() => setNuovo(true)}>Nuovo professionista</button></div></div>
+        <div className="row"><button className="btn ghost" onClick={importa} title="Riallinea l'elenco con il personale sanitario censito nelle sedi (non i medici)">Importa i sanitari dalle sedi</button><button className="btn" onClick={() => setNuovo(true)}>Nuovo professionista</button></div></div>
       <ErrorBox error={error} />
       {!data || !sedi.data ? <Loading /> : (
         <div className="spec-layout">

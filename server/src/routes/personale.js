@@ -67,24 +67,37 @@ r.put('/professionisti/:id', gest, ah(async (req, res) => {
   await audit(req, 'PROF_UPDATE', 'professionista', p.id, { nome: d.nome });
   res.json({ ok: true });
 }));
-// Importa dalle schede di sede il personale sanitario (infermieri, tecnici, ostetriche…) non ancora censito; i medici si inseriscono a mano se servono
+// Importa (e riallinea) dalle schede di sede il personale sanitario: crea chi manca, riattiva chi è tornato,
+// e toglie chi non c'entra (medici importati in passato) o non è più in nessuna sede: eliminato se non ha dati collegati, altrimenti disattivato.
 r.post('/professionisti/importa-da-sedi', gest, ah(async (req, res) => {
   const sedi = await many("SELECT id, data FROM strutture WHERE deleted_at IS NULL");
-  const existing = new Set((await many('SELECT persona_key FROM professionisti')).map((x) => x.persona_key));
-  let created = 0;
+  const current = await many('SELECT id, persona_key, tipo, attivo FROM professionisti');
+  const byKey = new Map(current.map((x) => [x.persona_key, x]));
   const seen = new Map();
   for (const s of sedi) for (const p of s.data.personale || []) {
     if (!p.nome?.trim() || p.tipo !== 'sanitario' || isAttivita(p.nome)) continue;
-    const key = personKey(p.nome); if (existing.has(key) || seen.has(key)) { if (seen.has(key) && p.email && !seen.get(key).email) seen.get(key).email = p.email; continue; }
-    seen.set(key, { key, nome: p.nome.trim(), tipo: p.tipo, profilo: p.tipo === 'medico' ? 'Medico' : (p.profilo || null), email: p.email || null, disc: p.discipline || (p.disciplina ? [p.disciplina] : []), attr: p.attrezzature || [], sede: s.id });
+    const key = personKey(p.nome);
+    if (seen.has(key)) { const x = seen.get(key); if (p.email && !x.email) x.email = p.email; if (!x.sedi.includes(s.id)) x.sedi.push(s.id); continue; }
+    seen.set(key, { key, nome: p.nome.trim(), profilo: p.profilo || null, email: p.email || null, disc: p.discipline || (p.disciplina ? [p.disciplina] : []), attr: p.attrezzature || [], sedi: [s.id] });
   }
+  let created = 0, riattivati = 0, eliminati = 0, disattivati = 0;
   for (const x of seen.values()) {
-    const dati = { professionale: { discipline: x.disc, attrezzature: x.attr }, sediAbilitate: [x.sede], compenso: { tipo: 'ORARIO' } };
-    await q('INSERT INTO professionisti (persona_key, nome, tipo, profilo, email, dati, updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7)', [x.key, x.nome, x.tipo, x.profilo, x.email, JSON.stringify(dati), req.user.id]);
+    const ex = byKey.get(x.key);
+    if (ex) { if (!ex.attivo) { await q('UPDATE professionisti SET attivo=true, updated_at=now() WHERE id=$1', [ex.id]); riattivati++; } continue; }
+    const dati = { professionale: { discipline: x.disc, attrezzature: x.attr }, sediAbilitate: x.sedi, compenso: { tipo: 'ORARIO' } };
+    await q('INSERT INTO professionisti (persona_key, nome, tipo, profilo, email, dati, updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7)', [x.key, x.nome, 'sanitario', x.profilo, x.email, JSON.stringify(dati), req.user.id]);
     created++;
   }
-  await audit(req, 'PROF_IMPORT', 'professionista', null, { created });
-  res.json({ created, totale: existing.size + created });
+  // chi non è (più) personale sanitario delle sedi
+  for (const ex of current) {
+    if (seen.has(ex.persona_key)) continue;
+    const dip = await one(`SELECT (SELECT count(*) FROM presenze WHERE prof_id=$1) + (SELECT count(*) FROM turni WHERE prof_id=$1) + (SELECT count(*) FROM rendiconti WHERE prof_id=$1)
+      + (SELECT count(*) FROM candidature WHERE prof_id=$1) + (SELECT count(*) FROM professionista_docs WHERE prof_id=$1) + (SELECT count(*) FROM disponibilita WHERE prof_id=$1) AS n, (SELECT user_id FROM professionisti WHERE id=$1) AS uid`, [ex.id]);
+    if (Number(dip.n) === 0 && !dip.uid) { await q('DELETE FROM professionisti WHERE id=$1', [ex.id]); eliminati++; }
+    else if (ex.attivo) { await q('UPDATE professionisti SET attivo=false, updated_at=now() WHERE id=$1', [ex.id]); if (dip.uid) await q("UPDATE users SET active=false WHERE id=$1 AND role='PROF'", [dip.uid]); disattivati++; }
+  }
+  await audit(req, 'PROF_IMPORT', 'professionista', null, { created, riattivati, eliminati, disattivati });
+  res.json({ created, riattivati, eliminati, disattivati, totale: seen.size });
 }));
 
 // Invito: crea (o riattiva) l'utente PROF collegato e manda il link per impostare la password
