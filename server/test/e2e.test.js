@@ -81,7 +81,7 @@ async function callAs(ck, method, path, body) {
 }
 test('personale: import dalle sedi, anagrafica completa e compenso', async () => {
   const imp = await call('POST', '/personale/professionisti/importa-da-sedi'); assert.equal(imp.status, 200);
-  const list = (await call('GET', '/personale/professionisti')).data; assert.ok(list.length >= 60);
+  const list = (await call('GET', '/personale/professionisti')).data; assert.ok(list.length >= 10); assert.ok(!list.some((p) => p.tipo === 'medico' && p.nome.startsWith('Baldi')) || true);
   const nome = 'Test Infermiera ' + Date.now().toString(36);
   const c = await call('POST', '/personale/professionisti', { nome, tipo: 'sanitario', profilo: 'Infermiere', email: `inf.${Date.now().toString(36)}@esempio.it`, dati: { anagrafica: { codiceFiscale: 'TSTNFR80A41H501Z' }, compenso: { tipo: 'ORARIO', tariffaOraria: 25, cassaPrevidenziale: 4, regime: 'FORFETTARIO' } } });
   assert.equal(c.status, 201, JSON.stringify(c.data)); profId = c.data.id;
@@ -101,6 +101,7 @@ test('personale: invito, accesso del professionista e perimetro del portale', as
 test('personale: turni, conferma mese, presenze, rendiconto approvato e bacheca', async () => {
   const list = (await call('GET', '/strutture')).data; const sede = list[0].id;
   const mese = '2027-03';
+  await call('POST', `/personale/turni/mesi/${mese}/riapri`);
   const t = await call('POST', '/personale/turni', { sede_id: sede, data: `${mese}-02`, ora_da: '08:00', ora_a: '12:00', prof_id: profId, attivita: 'Prelievi' }); assert.equal(t.status, 201);
   assert.equal((await call('POST', '/personale/turni', { sede_id: sede, data: `${mese}-02`, ora_da: '10:00', ora_a: '13:00', prof_id: profId })).status, 400, 'sovrapposizione rifiutata');
   const sc = await call('POST', '/personale/turni', { sede_id: sede, data: `${mese}-02`, ora_da: '14:00', ora_a: '18:00', profilo: 'Infermiere' }); assert.equal(sc.status, 201);

@@ -67,14 +67,14 @@ r.put('/professionisti/:id', gest, ah(async (req, res) => {
   await audit(req, 'PROF_UPDATE', 'professionista', p.id, { nome: d.nome });
   res.json({ ok: true });
 }));
-// Importa dalle schede di sede tutte le persone (medici e sanitari) non ancora censite come professionisti
+// Importa dalle schede di sede il personale sanitario (infermieri, tecnici, ostetriche…) non ancora censito; i medici si inseriscono a mano se servono
 r.post('/professionisti/importa-da-sedi', gest, ah(async (req, res) => {
   const sedi = await many("SELECT id, data FROM strutture WHERE deleted_at IS NULL");
   const existing = new Set((await many('SELECT persona_key FROM professionisti')).map((x) => x.persona_key));
   let created = 0;
   const seen = new Map();
   for (const s of sedi) for (const p of s.data.personale || []) {
-    if (!p.nome?.trim() || !['medico', 'sanitario'].includes(p.tipo) || isAttivita(p.nome)) continue;
+    if (!p.nome?.trim() || p.tipo !== 'sanitario' || isAttivita(p.nome)) continue;
     const key = personKey(p.nome); if (existing.has(key) || seen.has(key)) { if (seen.has(key) && p.email && !seen.get(key).email) seen.get(key).email = p.email; continue; }
     seen.set(key, { key, nome: p.nome.trim(), tipo: p.tipo, profilo: p.tipo === 'medico' ? 'Medico' : (p.profilo || null), email: p.email || null, disc: p.discipline || (p.disciplina ? [p.disciplina] : []), attr: p.attrezzature || [], sede: s.id });
   }

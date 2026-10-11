@@ -19,12 +19,12 @@ export default function Professionisti() {
   const [q, setQ] = useState(''); const [tipo, setTipo] = useState('tutti'); const [soloAttivi, setSoloAttivi] = useState(true);
   const [sel, setSel] = useState(null); const [nuovo, setNuovo] = useState(false);
   const list = useMemo(() => (data || []).filter((p) => (!soloAttivi || p.attivo) && (tipo === 'tutti' || p.tipo === tipo) && (!q || `${p.nome} ${p.profilo || ''} ${p.email || ''}`.toLowerCase().includes(q.toLowerCase()))), [data, q, tipo, soloAttivi]);
-  const importa = async () => { try { const r = await api.post('/personale/professionisti/importa-da-sedi'); toast(r.created ? `Importati ${r.created} professionisti dalle schede di sede` : 'Nessun nuovo professionista da importare'); reload(); } catch (e) { toast(e.message, 'err'); } };
+  const importa = async () => { try { const r = await api.post('/personale/professionisti/importa-da-sedi'); toast(r.created ? `Importati ${r.created} professionisti sanitari dalle schede di sede` : 'Nessun nuovo professionista sanitario da importare'); reload(); } catch (e) { toast(e.message, 'err'); } };
   const scad = (p) => p.prossimaScadenza && p.prossimaScadenza < new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
   return (
     <div className="page">
       <div className="page-head"><div><h1>Professionisti</h1><div className="sub">Anagrafica completa di medici e professionisti sanitari: dati, contratto, compenso, documenti, accesso al portale e disponibilità.</div></div>
-        <div className="row"><button className="btn ghost" onClick={importa}>Importa dalle schede di sede</button><button className="btn" onClick={() => setNuovo(true)}>Nuovo professionista</button></div></div>
+        <div className="row"><button className="btn ghost" onClick={importa} title="Importa infermieri, tecnici, ostetriche e gli altri sanitari censiti nelle sedi (non i medici)">Importa i sanitari dalle sedi</button><button className="btn" onClick={() => setNuovo(true)}>Nuovo professionista</button></div></div>
       <ErrorBox error={error} />
       {!data || !sedi.data ? <Loading /> : (
         <div className="spec-layout">
@@ -43,7 +43,7 @@ export default function Professionisti() {
               </button>))}</div>
           </div>
           <div style={{ minWidth: 0 }}>
-            {!sel ? <div className="card"><div className="bd empty">Seleziona un professionista, oppure importa dalle schede di sede chi non è ancora censito.</div></div>
+            {!sel ? <div className="card"><div className="bd empty">Seleziona un professionista, oppure importa dalle schede di sede il personale sanitario non ancora censito (i medici si aggiungono con "Nuovo professionista").</div></div>
               : <Scheda key={sel} id={sel} sedi={sedi.data} opz={opz.data} toast={toast} reloadList={reload} onDeleted={() => { setSel(null); reload(); }} />}
           </div>
         </div>
