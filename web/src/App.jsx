@@ -47,7 +47,7 @@ function Shell() {
           </> : <>
             <div className="group">Network</div>
             <L to="/" icon="home" end>Cruscotto</L>
-            <L to="/specialisti" icon="users">Specialisti</L>
+            <L to="/specialisti" icon="users">Tutti i professionisti</L>
             <L to="/calendario" icon="list">Calendario</L>
             <div className="group">Pianificazione</div>
             <L to="/sedi" icon="pin">Sedi e ambulatori</L>

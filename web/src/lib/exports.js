@@ -92,7 +92,7 @@ export function pdfReportDirezione(net) {
     if (r.alte.length) { y = section(doc, 'Criticità alte', y + 6); y = table(doc, ['Descrizione'], r.alte.map((c) => [c.t]), y); }
   }
   // specialisti del network
-  y = section(doc, 'Specialisti del network (medici e professionisti sanitari)', y + 8);
+  y = section(doc, 'Professionisti del network (medici e sanitari)', y + 8);
   table(doc, ['Nome', 'Tipo', 'Discipline / profilo', 'Sedi', 'Ore/sett.'], net.specialisti.filter((x) => !x.attivita).map((x) => [x.nome, x.tipo, x.discipline.join(', ') || x.profili.join(', '), x.sedi.map((z) => z.sede).filter((v, i, a) => a.indexOf(v) === i).join('; '), durTxt(x.ore)]), y);
   return { doc, filename: `Report_Direzione_${new Date().toISOString().slice(0, 10)}.pdf` };
 }
@@ -102,7 +102,7 @@ export function xlsxReportDirezione(net) {
   const sheet = (name, aoa) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
   sheet('Sedi', [['Sede', 'Indirizzo', 'Responsabile', 'Ambulatori', 'Medici', 'Sessioni/sett.', 'Slot/sett.', 'Utilizzo %', 'Ore libere', 'Criticità alte'], ...rows.map((r) => [r.label, r.s.indirizzo, r.s.siteManager || '', r.s.ambulatori.length, r.med, r.sess, r.slots, r.util, +(r.free / 60).toFixed(1), r.alte.length]), ['TOTALE', '', '', tot.amb, tot.med, tot.sess, tot.slots, util, +(tot.free / 60).toFixed(1), tot.alte]]);
   sheet('Sessioni', [['Sede', 'Giorno', 'Dalle', 'Alle', 'Ambulatorio', 'Medico', 'Disciplina', 'Slot', 'Supporto'], ...net.sedi.flatMap(({ plan, label }) => plan ? plan.assigns.map((a) => [label, DAYS[a.d], m2t(a.s), m2t(a.e), plan.byId[a.roomId].nome, plan.byId[a.medId].nome, (plan.byId[a.medId].discipline || [plan.byId[a.medId].disciplina]).filter(Boolean).join(', '), a.slots ?? '', a.sanId ? plan.byId[a.sanId].nome : '']) : [])]);
-  sheet('Specialisti', [['Nome', 'Tipo', 'Discipline / profilo', 'Sedi', 'Ore/sett.', 'Sessioni'], ...net.specialisti.filter((x) => !x.attivita).map((x) => [x.nome, x.tipo, x.discipline.join(', ') || x.profili.join(', '), [...new Set(x.sedi.map((z) => z.sede))].join('; '), +(x.ore / 60).toFixed(1), x.sessioni.filter((q) => q.room).length])]);
+  sheet('Professionisti', [['Nome', 'Tipo', 'Discipline / profilo', 'Sedi', 'Ore/sett.', 'Sessioni'], ...net.specialisti.filter((x) => !x.attivita).map((x) => [x.nome, x.tipo, x.discipline.join(', ') || x.profili.join(', '), [...new Set(x.sedi.map((z) => z.sede))].join('; '), +(x.ore / 60).toFixed(1), x.sessioni.filter((q) => q.room).length])]);
   sheet('Spazi liberi', [['Sede', 'Ambulatorio', 'Giorno', 'Dalle', 'Alle', 'Minuti'], ...net.sedi.flatMap(({ plan, label }) => plan ? plan.free.map((f) => [label, plan.byId[f.roomId].nome, DAYS[f.d], m2t(f.s), m2t(f.e), f.e - f.s]) : [])]);
   sheet('Criticità', [['Sede', 'Livello', 'Descrizione'], ...net.sedi.flatMap(({ plan, label }) => plan ? plan.crit.map((c) => [label, c.lv, c.t]) : [])]);
   XLSX.writeFile(wb, `Report_Direzione_${new Date().toISOString().slice(0, 10)}.xlsx`);

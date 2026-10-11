@@ -31,3 +31,19 @@ export function validateLite(d) {
   if (JSON.stringify(d).length > 4_000_000) return 'documento troppo grande';
   return null;
 }
+
+/** Modifica il documento di una sede con un mutatore (ritorna true se ha cambiato qualcosa), creando una nuova versione in cronologia. */
+export async function mutateStruttura(id, mutator, user, note = 'aggiornamento automatico') {
+  const { one, tx } = await import('../db.js');
+  const row = await one('SELECT data, version FROM strutture WHERE id=$1 AND deleted_at IS NULL', [id]);
+  if (!row) return false;
+  const data = JSON.parse(JSON.stringify(row.data));
+  if (!mutator(data)) return false;
+  const newVersion = row.version + 1;
+  await tx(async (c) => {
+    await c.query('UPDATE strutture SET data=$2, version=$3, updated_at=now(), updated_by=$4 WHERE id=$1', [id, JSON.stringify(data), newVersion, user?.id || null]);
+    await c.query('INSERT INTO struttura_history (struttura_id, version, data, user_id, user_name) VALUES ($1,$2,$3,$4,$5)', [id, newVersion, JSON.stringify(data), user?.id || null, `${user?.full_name || 'sistema'} · ${note}`]);
+    await c.query('DELETE FROM struttura_history WHERE struttura_id=$1 AND id NOT IN (SELECT id FROM struttura_history WHERE struttura_id=$1 ORDER BY id DESC LIMIT 500)', [id]);
+  });
+  return true;
+}

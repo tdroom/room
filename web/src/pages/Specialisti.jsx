@@ -28,7 +28,7 @@ export default function Specialisti() {
   const [bulk, setBulk] = useState(false);
   return (
     <div className="page">
-      <div className="page-head"><div><h1>Specialisti del network</h1><div className="sub">Medici e professionisti sanitari su tutte le sedi: impegni settimanali unificati e simulatore di proposta per nuove collaborazioni.</div></div>
+      <div className="page-head"><div><h1>Tutti i professionisti</h1><div className="sub">Medici e professionisti sanitari di tutte le sedi: impegni settimanali unificati e simulatore di proposta per nuove collaborazioni.</div></div>
         {canEdit && net && <button className="btn ghost" onClick={() => setBulk(true)}>Invio massivo del piano disponibilità…</button>}</div>
       {bulk && net && <BulkModal net={net} list={net.specialisti.filter((x) => !x.attivita)} onClose={() => setBulk(false)} toast={toast} />}
       <ErrorBox error={error} />
@@ -38,7 +38,7 @@ export default function Specialisti() {
             <div className="bd" style={{ padding: 12, borderBottom: '1px solid var(--line)' }}>
               <input placeholder="Cerca nome o disciplina…" value={q} onChange={(e) => setQ(e.target.value)} />
               <div className="seg" style={{ marginTop: 8 }}>{[['tutti', 'Tutti'], ['medico', 'Medici'], ['sanitario', 'Sanitari']].map(([k, l]) => <button key={k} className={tipo === k ? 'on' : ''} onClick={() => setTipo(k)}>{l}</button>)}</div>
-              <div className="small muted" style={{ marginTop: 6 }}>{list.length} specialisti · {net.sedi.length} sedi</div>
+              <div className="small muted" style={{ marginTop: 6 }}>{list.length} professionisti · {net.sedi.length} sedi</div>
             </div>
             <div className="spec-items">{list.map((s) => (
               <button key={s.key} className={`spec-item ${sel === s.key ? 'on' : ''}`} onClick={() => setSel(s.key)}>
@@ -48,7 +48,7 @@ export default function Specialisti() {
               </button>))}</div>
           </div>
           <div style={{ minWidth: 0 }}>
-            {!x ? <div className="card"><div className="bd empty">Seleziona uno specialista per vedere i suoi impegni su tutte le sedi e simulare una proposta.</div></div>
+            {!x ? <div className="card"><div className="bd empty">Seleziona un professionista per vedere i suoi impegni su tutte le sedi e simulare una proposta.</div></div>
               : <Dettaglio key={x.key} x={x} net={net} colorOf={colorOf} canEdit={canEdit} toast={toast} reload={reload} />}
           </div>
         </div>
@@ -92,12 +92,12 @@ function Dettaglio({ x, net, colorOf, canEdit, toast, reload }) {
           </div>
           <div className="row">
             <button className="btn ghost sm" onClick={() => { const { doc, filename } = pdfAgendaSpecialista(x); doc.save(filename); }}>Scarica PDF agenda</button>
-            {canEdit && <button className="btn sm ghost" onClick={() => setMail({ kind: 'agenda' })}>Invia agenda al medico</button>}
+            {canEdit && <button className="btn sm ghost" onClick={() => setMail({ kind: 'agenda' })}>Invia l'agenda al professionista</button>}
             <button className="btn ghost sm" onClick={() => { const p = pianoOf(net, x); const { doc, filename } = pdfPianoDisponibilita(x, p, pianoText(x, p)); doc.save(filename); }}>Scarica PDF piano disponibilità</button>
-            {canEdit && <button className="btn sm" onClick={() => setMail({ kind: 'piano', sim: pianoOf(net, x) })}>Invia al medico il piano delle disponibilità</button>}
+            {canEdit && <button className="btn sm" onClick={() => setMail({ kind: 'piano', sim: pianoOf(net, x) })}>Invia al professionista il piano delle disponibilità</button>}
           </div>
         </div>
-        {canEdit && <div className="row" style={{ marginTop: 10 }}><Field label="Email dello specialista (per gli invii)"><div className="row"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nome@esempio.it" style={{ width: 280 }} />{email !== (x.email || '') && <button className="btn sm ghost" onClick={saveEmail}>Salva</button>}</div></Field></div>}
+        {canEdit && <div className="row" style={{ marginTop: 10 }}><Field label="Email del professionista (per gli invii)"><div className="row"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nome@esempio.it" style={{ width: 280 }} />{email !== (x.email || '') && <button className="btn sm ghost" onClick={saveEmail}>Salva</button>}</div></Field></div>}
       </div></div>
 
       <div className="card"><div className="hd"><h2>Impegni settimanali su tutte le sedi</h2></div><div className="bd">
@@ -117,7 +117,7 @@ function Dettaglio({ x, net, colorOf, canEdit, toast, reload }) {
       </div></div>
 
       <div className="card"><div className="hd"><h2>Simulatore di proposta</h2><span className="spacer" /><span className="small muted">Usa solo gli spazi liberi delle sedi: nessuna attività già pianificata viene toccata.</span></div><div className="bd">
-        <p className="small muted" style={{ marginTop: 0 }}>Inserisci le fasce in cui lo specialista si rende disponibile in aggiunta agli impegni già in calendario con noi. Il simulatore cerca, in tutte le sedi, gli ambulatori liberi compatibili con disciplina e attrezzature e li propone.</p>
+        <p className="small muted" style={{ marginTop: 0 }}>Inserisci le fasce in cui il professionista si rende disponibile in aggiunta agli impegni già in calendario con noi. Il simulatore cerca, in tutte le sedi, gli ambulatori liberi compatibili con disciplina e attrezzature e li propone.</p>
         <div className="row" style={{ marginBottom: 10 }}>
           <button className="btn sm ghost" onClick={() => fill('08:00', '19:00')}>Lun–Sab 08–19</button>
           <button className="btn sm ghost" onClick={() => fill('08:00', '13:00')}>Mattine</button>
@@ -181,7 +181,7 @@ function MailModal({ x, kind, email, onClose, build, defaults, toast }) {
       {status && !status.configured && <div className="alert err" style={{ marginBottom: 10 }}>L'invio email non è ancora configurato (GRAPH_SENDER e permesso Mail.Send su Entra): il messaggio verrà solo registrato. Puoi comunque scaricare il PDF e inviarlo a mano.</div>}
       {status?.configured && <div className="small muted" style={{ marginBottom: 10 }}>Mittente: {status.from} (Microsoft 365). Nessuna email parte senza il pulsante Invia.</div>}
       <div className="form-grid">
-        <Field label="Destinatario"><input type="text" value={to} onChange={(e) => setTo(e.target.value)} placeholder="email del medico (più indirizzi separati da virgola)" /></Field>
+        <Field label="Destinatario"><input type="text" value={to} onChange={(e) => setTo(e.target.value)} placeholder="email del professionista (più indirizzi separati da virgola)" /></Field>
         <Field label="Oggetto"><input value={subject} onChange={(e) => setSubject(e.target.value)} /></Field>
       </div>
       <Field label="Testo"><textarea rows={10} value={body} onChange={(e) => setBody(e.target.value)} /></Field>
@@ -215,13 +215,13 @@ function BulkModal({ net, list, onClose, toast }) {
   return (
     <Modal title="Invio massivo del piano delle disponibilità" onClose={onClose} wide footer={<><button className="btn ghost" onClick={onClose}>{prog && prog.done === prog.tot ? 'Chiudi' : 'Annulla'}</button><button className="btn" disabled={!n || confirm !== 'INVIA' || (prog && prog.done < prog.tot)} onClick={run}>{prog ? `${prog.done}/${prog.tot}` : `Invia ${n} email`}</button></>}>
       {status && !status.configured && <div className="alert err" style={{ marginBottom: 10 }}>L'invio email non è configurato (GRAPH_SENDER e permesso Mail.Send): i messaggi verrebbero solo registrati, non spediti.</div>}
-      <p className="small muted" style={{ marginTop: 0 }}>Ogni specialista selezionato riceve una email personale con in allegato il proprio PDF: impegni già in calendario con noi e spazi liberi compatibili nelle nostre strutture. Nulla parte finché non confermi qui sotto. Specialisti senza email: {list.length - withMail.length} (si inseriscono dalla scheda dello specialista).</p>
+      <p className="small muted" style={{ marginTop: 0 }}>Ogni professionista selezionato riceve una email personale con in allegato il proprio PDF: impegni già in calendario con noi e spazi liberi compatibili nelle nostre strutture. Nulla parte finché non confermi qui sotto. Professionisti senza email: {list.length - withMail.length} (si inseriscono dalla scheda del professionista).</p>
       <Field label="Oggetto"><input value={subject} onChange={(e) => setSubject(e.target.value)} /></Field>
       <div className="row" style={{ margin: '8px 0' }}><button className="btn sm ghost" onClick={() => setChosen(new Set(withMail.map((x) => x.key)))}>Seleziona tutti</button><button className="btn sm ghost" onClick={() => setChosen(new Set())}>Nessuno</button><span className="small muted">{n} selezionati su {withMail.length} con email</span></div>
-      <div className="table-wrap" style={{ maxHeight: 300, overflow: 'auto' }}><table className="t"><thead><tr><th /><th>Specialista</th><th>Attività</th><th>Email</th><th className="num">Ore/sett.</th></tr></thead>
+      <div className="table-wrap" style={{ maxHeight: 300, overflow: 'auto' }}><table className="t"><thead><tr><th /><th>Professionista</th><th>Attività</th><th>Email</th><th className="num">Ore/sett.</th></tr></thead>
         <tbody>{withMail.map((x) => <tr key={x.key}><td><input type="checkbox" checked={chosen.has(x.key)} onChange={() => toggle(x.key)} /></td><td className="strong">{x.nome}</td><td className="small">{x.discipline.join(', ') || x.profili.join(', ')}</td><td className="small">{x.email}</td><td className="num">{durTxt(x.ore)}</td></tr>)}</tbody></table></div>
       {prog && <div className="alert info" style={{ marginTop: 10 }}>Inviate {prog.ok} · non riuscite {prog.ko} · {prog.done}/{prog.tot}{prog.log.length ? <ul>{prog.log.map((l, i) => <li key={i}>{l}</li>)}</ul> : null}</div>}
-      {!prog && <Field label={`Per confermare l'invio a ${n} specialisti scrivi INVIA`}><input value={confirm} onChange={(e) => setConfirm(e.target.value.toUpperCase())} style={{ width: 160 }} /></Field>}
+      {!prog && <Field label={`Per confermare l'invio a ${n} professionisti scrivi INVIA`}><input value={confirm} onChange={(e) => setConfirm(e.target.value.toUpperCase())} style={{ width: 160 }} /></Field>}
     </Modal>
   );
 }

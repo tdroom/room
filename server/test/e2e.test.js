@@ -88,6 +88,19 @@ test('personale: import dalle sedi, anagrafica completa e compenso', async () =>
   const g = await call('GET', `/personale/professionisti/${profId}`); assert.equal(g.data.dati.compenso.tariffaOraria, 25);
   const doc = await call('POST', `/personale/professionisti/${profId}/docs`, { tipo: 'CV', nome: 'cv.pdf', mime: 'application/pdf', base64: Buffer.from('%PDF-1.4 t').toString('base64') }); assert.equal(doc.status, 201);
 });
+test('personale: anagrafica allineata con le schede di sede (nome, email) in entrambe le direzioni', async () => {
+  const sedi = (await call('GET', '/strutture')).data; const sede = sedi[0];
+  const san = sede.personale.find((x) => x.tipo === 'sanitario' && x.nome?.trim()); if (!san) return;
+  await call('POST', '/personale/professionisti/importa-da-sedi');
+  const pr = (await call('GET', '/personale/professionisti')).data.find((x) => x.nome === san.nome.trim()); assert.ok(pr, 'sanitario importato');
+  const full = (await call('GET', `/personale/professionisti/${pr.id}`)).data;
+  const mail = `sync.${Date.now().toString(36)}@esempio.it`;
+  const r = await call('PUT', `/personale/professionisti/${pr.id}`, { nome: full.nome, tipo: full.tipo, profilo: full.profilo, email: mail, attivo: true, dati: full.dati }); assert.equal(r.status, 200); assert.ok(r.data.sediAggiornate >= 1);
+  const s2 = (await call('GET', `/strutture/${sede.id}`)).data; assert.equal(s2.struttura.personale.find((x) => x.id === san.id).email, mail, 'email riportata nella sede');
+  const lite = { ...s2.struttura }; delete lite.logo; lite.plan = { markers: s2.struttura.plan.markers }; lite.personale = lite.personale.map((x) => (x.id === san.id ? { ...x, email: 'dasede.' + mail } : x));
+  assert.equal((await call('PUT', `/strutture/${sede.id}`, { data: lite, version: s2.version })).status, 200);
+  assert.equal((await call('GET', `/personale/professionisti/${pr.id}`)).data.email, 'dasede.' + mail, 'email dalla sede riportata in anagrafica');
+});
 test('personale: invito, accesso del professionista e perimetro del portale', async () => {
   const inv = await call('POST', `/personale/professionisti/${profId}/invita`, {}); assert.equal(inv.status, 200); assert.ok(inv.data.link.includes('/invito/'));
   const token = inv.data.link.split('/invito/')[1];

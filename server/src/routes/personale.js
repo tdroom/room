@@ -9,7 +9,7 @@ import { ah, bad, notFound, forbidden, audit, parse, getSetting, r2, eur, itDate
 import { isGestione, isAdmin, canSeeStruttura, canConfirmPresenze, siteManagerSedi } from '../lib/access.js';
 import { sendMail } from '../lib/mailer.js';
 import { computePlan, m2t as m2tE } from '../lib/engine.js';
-import { joinStruttura } from '../lib/strutture.js';
+import { joinStruttura, mutateStruttura } from '../lib/strutture.js';
 import { personKey, isAttivita, calcolaRendiconto, oreTra, validMese, validTime, dow, meseTxt, sediMap, profLite, isoDate, PROFILI, DOC_TIPI, tariffaPerSede } from '../lib/personale.js';
 
 const r = Router();
@@ -64,14 +64,30 @@ r.put('/professionisti/:id', gest, ah(async (req, res) => {
     if (!clash) await q('UPDATE users SET email=$2, full_name=$3, updated_at=now() WHERE id=$1', [p.user_id, d.email, d.nome]);
   }
   if (p.user_id && d.attivo === false) await q('UPDATE users SET active=false WHERE id=$1 AND role=$2', [p.user_id, 'PROF']);
-  await audit(req, 'PROF_UPDATE', 'professionista', p.id, { nome: d.nome });
-  res.json({ ok: true });
+  // La stessa persona nelle schede di sede: nome, email e profilo seguono l'anagrafica del professionista
+  let sediAggiornate = 0;
+  const sedi = await many("SELECT id FROM strutture WHERE deleted_at IS NULL");
+  for (const s of sedi) {
+    const ok = await mutateStruttura(s.id, (data) => {
+      let ch = false;
+      for (const x of data.personale || []) {
+        if (personKey(x.nome) !== p.persona_key) continue;
+        if (x.nome !== d.nome) { x.nome = d.nome; ch = true; }
+        if ((d.email || '') !== (x.email || '')) { x.email = d.email || ''; ch = true; }
+        if (d.tipo === 'sanitario' && d.profilo && x.profilo !== d.profilo) { x.profilo = d.profilo; ch = true; }
+      }
+      return ch;
+    }, req.user, `anagrafica professionista ${d.nome}`);
+    if (ok) sediAggiornate++;
+  }
+  await audit(req, 'PROF_UPDATE', 'professionista', p.id, { nome: d.nome, sediAggiornate });
+  res.json({ ok: true, sediAggiornate });
 }));
-// Importa (e riallinea) dalle schede di sede il personale sanitario: crea chi manca, riattiva chi è tornato,
-// e toglie chi non c'entra (medici importati in passato) o non è più in nessuna sede: eliminato se non ha dati collegati, altrimenti disattivato.
+// Aggiunge dalle schede di sede il personale sanitario non ancora censito. Non tocca mai chi è già in elenco:
+// i professionisti fuori dalla programmazione delle sedi (figure di backup per tutte le strutture) restano.
 r.post('/professionisti/importa-da-sedi', gest, ah(async (req, res) => {
   const sedi = await many("SELECT id, data FROM strutture WHERE deleted_at IS NULL");
-  const current = await many('SELECT id, persona_key, tipo, attivo FROM professionisti');
+  const current = await many('SELECT id, persona_key, attivo FROM professionisti');
   const byKey = new Map(current.map((x) => [x.persona_key, x]));
   const seen = new Map();
   for (const s of sedi) for (const p of s.data.personale || []) {
@@ -80,7 +96,7 @@ r.post('/professionisti/importa-da-sedi', gest, ah(async (req, res) => {
     if (seen.has(key)) { const x = seen.get(key); if (p.email && !x.email) x.email = p.email; if (!x.sedi.includes(s.id)) x.sedi.push(s.id); continue; }
     seen.set(key, { key, nome: p.nome.trim(), profilo: p.profilo || null, email: p.email || null, disc: p.discipline || (p.disciplina ? [p.disciplina] : []), attr: p.attrezzature || [], sedi: [s.id] });
   }
-  let created = 0, riattivati = 0, eliminati = 0, disattivati = 0;
+  let created = 0, riattivati = 0;
   for (const x of seen.values()) {
     const ex = byKey.get(x.key);
     if (ex) { if (!ex.attivo) { await q('UPDATE professionisti SET attivo=true, updated_at=now() WHERE id=$1', [ex.id]); riattivati++; } continue; }
@@ -88,16 +104,21 @@ r.post('/professionisti/importa-da-sedi', gest, ah(async (req, res) => {
     await q('INSERT INTO professionisti (persona_key, nome, tipo, profilo, email, dati, updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7)', [x.key, x.nome, 'sanitario', x.profilo, x.email, JSON.stringify(dati), req.user.id]);
     created++;
   }
-  // chi non è (più) personale sanitario delle sedi
-  for (const ex of current) {
-    if (seen.has(ex.persona_key)) continue;
-    const dip = await one(`SELECT (SELECT count(*) FROM presenze WHERE prof_id=$1) + (SELECT count(*) FROM turni WHERE prof_id=$1) + (SELECT count(*) FROM rendiconti WHERE prof_id=$1)
-      + (SELECT count(*) FROM candidature WHERE prof_id=$1) + (SELECT count(*) FROM professionista_docs WHERE prof_id=$1) + (SELECT count(*) FROM disponibilita WHERE prof_id=$1) AS n, (SELECT user_id FROM professionisti WHERE id=$1) AS uid`, [ex.id]);
-    if (Number(dip.n) === 0 && !dip.uid) { await q('DELETE FROM professionisti WHERE id=$1', [ex.id]); eliminati++; }
-    else if (ex.attivo) { await q('UPDATE professionisti SET attivo=false, updated_at=now() WHERE id=$1', [ex.id]); if (dip.uid) await q("UPDATE users SET active=false WHERE id=$1 AND role='PROF'", [dip.uid]); disattivati++; }
-  }
-  await audit(req, 'PROF_IMPORT', 'professionista', null, { created, riattivati, eliminati, disattivati });
-  res.json({ created, riattivati, eliminati, disattivati, totale: seen.size });
+  await audit(req, 'PROF_IMPORT', 'professionista', null, { created, riattivati });
+  res.json({ created, riattivati, totale: seen.size });
+}));
+// Eliminazione di un professionista: solo se non ha dati collegati (altrimenti va disattivato dalla scheda)
+r.delete('/professionisti/:id', gest, ah(async (req, res) => {
+  const p = await one('SELECT * FROM professionisti WHERE id=$1', [req.params.id]); if (!p) throw notFound();
+  const dip = await one(`SELECT (SELECT count(*) FROM presenze WHERE prof_id=$1) AS presenze, (SELECT count(*) FROM turni WHERE prof_id=$1) AS turni, (SELECT count(*) FROM rendiconti WHERE prof_id=$1) AS rendiconti, (SELECT count(*) FROM candidature WHERE prof_id=$1) AS candidature`, [p.id]);
+  const n = Object.values(dip).reduce((a, v) => a + Number(v), 0);
+  if (n > 0) throw bad(`Il professionista ha dati collegati (${Object.entries(dip).filter(([, v]) => Number(v)).map(([k, v]) => `${v} ${k}`).join(', ')}): impostalo "Non attivo" invece di eliminarlo`);
+  await tx(async (c) => {
+    await c.query('DELETE FROM professionista_docs WHERE prof_id=$1', [p.id]); await c.query('DELETE FROM disponibilita WHERE prof_id=$1', [p.id]);
+    await c.query('DELETE FROM professionisti WHERE id=$1', [p.id]);
+    if (p.user_id) { await c.query('DELETE FROM inviti WHERE user_id=$1', [p.user_id]); await c.query("UPDATE users SET active=false WHERE id=$1 AND role='PROF'", [p.user_id]); }
+  });
+  await audit(req, 'PROF_DELETE', 'professionista', p.id, { nome: p.nome }); res.json({ ok: true });
 }));
 
 // Invito: crea (o riattiva) l'utente PROF collegato e manda il link per impostare la password

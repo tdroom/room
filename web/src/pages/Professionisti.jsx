@@ -20,14 +20,13 @@ export default function Professionisti() {
   const [sel, setSel] = useState(null); const [nuovo, setNuovo] = useState(false);
   const list = useMemo(() => (data || []).filter((p) => (!soloAttivi || p.attivo) && (tipo === 'tutti' || p.tipo === tipo) && (!q || `${p.nome} ${p.profilo || ''} ${p.email || ''}`.toLowerCase().includes(q.toLowerCase()))), [data, q, tipo, soloAttivi]);
   const importa = async () => {
-    if (!window.confirm('Riallineare l\'elenco con le schede di sede? Vengono aggiunti i sanitari mancanti, riattivati quelli tornati, ed eliminati (o disattivati, se hanno turni/presenze/rendiconti/documenti) i medici importati in passato e chi non è più in nessuna sede.')) return;
-    try { const r = await api.post('/personale/professionisti/importa-da-sedi'); toast(`Elenco riallineato: ${r.created} aggiunti, ${r.riattivati} riattivati, ${r.eliminati} eliminati, ${r.disattivati} disattivati · ${r.totale} sanitari nelle sedi`); setSel(null); reload(); } catch (e) { toast(e.message, 'err'); }
+    try { const r = await api.post('/personale/professionisti/importa-da-sedi'); toast(r.created || r.riattivati ? `Aggiunti ${r.created} sanitari dalle sedi${r.riattivati ? `, riattivati ${r.riattivati}` : ''}` : 'Tutti i sanitari delle sedi sono già in elenco'); reload(); } catch (e) { toast(e.message, 'err'); }
   };
   const scad = (p) => p.prossimaScadenza && p.prossimaScadenza < new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
   return (
     <div className="page">
       <div className="page-head"><div><h1>Professionisti</h1><div className="sub">Anagrafica completa di medici e professionisti sanitari: dati, contratto, compenso, documenti, accesso al portale e disponibilità.</div></div>
-        <div className="row"><button className="btn ghost" onClick={importa} title="Riallinea l'elenco con il personale sanitario censito nelle sedi (non i medici)">Importa i sanitari dalle sedi</button><button className="btn" onClick={() => setNuovo(true)}>Nuovo professionista</button></div></div>
+        <div className="row"><button className="btn ghost" onClick={importa} title="Aggiunge il personale sanitario censito nelle sedi e non ancora in elenco; non elimina nessuno">Aggiungi i sanitari mancanti dalle sedi</button><button className="btn" onClick={() => setNuovo(true)}>Nuovo professionista</button></div></div>
       <ErrorBox error={error} />
       {!data || !sedi.data ? <Loading /> : (
         <div className="spec-layout">
@@ -46,7 +45,7 @@ export default function Professionisti() {
               </button>))}</div>
           </div>
           <div style={{ minWidth: 0 }}>
-            {!sel ? <div className="card"><div className="bd empty">Seleziona un professionista, oppure importa dalle schede di sede il personale sanitario non ancora censito (i medici si aggiungono con "Nuovo professionista").</div></div>
+            {!sel ? <div className="card"><div className="bd empty">Seleziona un professionista. "Aggiungi i sanitari mancanti dalle sedi" censisce chi è già nelle schede di sede; chi lavora fuori dalla programmazione delle sedi (figure di backup) si inserisce con "Nuovo professionista" e resta in elenco.</div></div>
               : <Scheda key={sel} id={sel} sedi={sedi.data} opz={opz.data} toast={toast} reloadList={reload} onDeleted={() => { setSel(null); reload(); }} />}
           </div>
         </div>
@@ -87,7 +86,8 @@ function Scheda({ id, sedi, opz, toast, reloadList, onDeleted }) {
   const dirty = JSON.stringify(payload) !== orig;
   const set = (patch) => setP((x) => ({ ...x, ...patch }));
   const setD = (sec, patch) => setP((x) => ({ ...x, dati: { ...x.dati, [sec]: { ...(x.dati[sec] || {}), ...patch } } }));
-  const save = async () => { setBusy(true); try { await api.put(`/personale/professionisti/${id}`, payload); toast('Scheda salvata'); await load(); reloadList(); } catch (e) { toast(e.message, 'err'); } setBusy(false); };
+  const save = async () => { setBusy(true); try { const r = await api.put(`/personale/professionisti/${id}`, payload); toast(r.sediAggiornate ? `Scheda salvata · aggiornata anche in ${r.sediAggiornate} ${r.sediAggiornate === 1 ? 'sede' : 'sedi'}` : 'Scheda salvata'); await load(); reloadList(); } catch (e) { toast(e.message, 'err'); } setBusy(false); };
+  const elimina = async () => { if (!window.confirm(`Eliminare ${p.nome} dall'anagrafica dei professionisti? (le schede di sede non vengono toccate)`)) return; try { await api.del(`/personale/professionisti/${id}`); toast('Professionista eliminato'); onDeleted(); } catch (e) { toast(e.message, 'err'); } };
   const A = p.dati.anagrafica, PR = p.dati.professionale, C = p.dati.contratto, AS = p.dati.assicurazione, CO = p.dati.compenso;
   const scadenzaCls = (d) => (d && d < new Date().toISOString().slice(0, 10) ? 'red' : d && d < new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10) ? 'amber' : '');
   return (
@@ -98,13 +98,13 @@ function Scheda({ id, sedi, opz, toast, reloadList, onDeleted }) {
             <h2 style={{ fontSize: 18 }}>{p.nome} <Badge tone={p.tipo === 'medico' ? 'teal' : 'mauve'}>{p.profilo || p.tipo}</Badge> {!p.attivo && <Badge tone="red">non attivo</Badge>}</h2>
             <div className="small muted">{p.sediPresente?.length ? 'Nelle schede di sede: ' + p.sediPresente.map((s) => s.label).join(', ') : 'Non presente nelle schede di sede'}{p.updated_at ? ` · aggiornato ${itDateTime(p.updated_at)}` : ''}</div>
           </div>
-          <div className="row">{dirty && <span className="small amber">modifiche non salvate</span>}<button className="btn" disabled={!dirty || busy} onClick={save}>{busy ? 'Salvo…' : 'Salva scheda'}</button></div>
+          <div className="row">{dirty && <span className="small amber">modifiche non salvate</span>}<button className="btn ghost sm" style={{ color: 'var(--red)' }} onClick={elimina} title="Possibile solo senza turni, presenze, rendiconti o candidature collegati">Elimina</button><button className="btn" disabled={!dirty || busy} onClick={save}>{busy ? 'Salvo…' : 'Salva scheda'}</button></div>
         </div>
         <div className="seg" style={{ marginTop: 12, flexWrap: 'wrap' }}>{TABS.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
       </div></div>
 
       {tab === 'anagrafica' && <Card title="Dati anagrafici e contatti"><div className="form-grid">
-        <Field label="Cognome e nome (chiave di collegamento alle sedi)"><input value={p.nome} onChange={(e) => set({ nome: e.target.value })} /></Field>
+        <Field label="Cognome e nome (chiave di collegamento alle sedi)" help="Nome, email e profilo salvati qui vengono riportati anche nelle schede di sede dove la persona compare"><input value={p.nome} onChange={(e) => set({ nome: e.target.value })} /></Field>
         <Field label="Tipo"><select value={p.tipo} onChange={(e) => set({ tipo: e.target.value, profilo: e.target.value === 'medico' ? 'Medico' : p.profilo === 'Medico' ? 'Infermiere' : p.profilo })}><option value="medico">Medico</option><option value="sanitario">Professionista sanitario</option></select></Field>
         <Field label="Profilo professionale"><ProfiloInput value={p.profilo} tipo={p.tipo} onChange={(v) => set({ profilo: v })} /></Field>
         <Field label="Stato"><select value={p.attivo ? '1' : '0'} onChange={(e) => set({ attivo: e.target.value === '1' })}><option value="1">Attivo</option><option value="0">Non attivo (cessato)</option></select></Field>

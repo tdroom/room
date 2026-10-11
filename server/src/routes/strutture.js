@@ -96,6 +96,17 @@ r.put('/:id', ah(async (req, res) => {
     // conserva al massimo 500 versioni per sede
     await c.query('DELETE FROM struttura_history WHERE struttura_id=$1 AND id NOT IN (SELECT id FROM struttura_history WHERE struttura_id=$1 ORDER BY id DESC LIMIT 500)', [id]);
   });
+  // Anagrafica dei professionisti allineata alla scheda di sede (stessa persona per chiave del nome): email e profilo
+  try {
+    const { personKey } = await import('../lib/personale.js');
+    for (const x of data.personale || []) {
+      if (!x.nome?.trim()) continue;
+      const pr = await one('SELECT id, email, profilo, tipo FROM professionisti WHERE persona_key=$1', [personKey(x.nome)]);
+      if (!pr) continue;
+      const email = x.email || pr.email || null, profilo = (pr.tipo === 'sanitario' && x.profilo) ? x.profilo : pr.profilo;
+      if (email !== pr.email || profilo !== pr.profilo) await q('UPDATE professionisti SET email=$2, profilo=$3, updated_at=now(), updated_by=$4 WHERE id=$1', [pr.id, email, profilo, req.user.id]);
+    }
+  } catch (e) { console.error('[sync professionisti]', e.message); }
   await audit(req, 'STRUTTURA_SAVE', 'struttura', id, { version: newVersion, blobs: blobs ? Object.keys(blobs) : [] });
   res.json({ ok: true, version: newVersion, updatedAt: new Date().toISOString(), updatedBy: req.user.full_name });
 }));
